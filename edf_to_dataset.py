@@ -53,6 +53,7 @@ def edf_to_dataset(mouse):
     print('Recording started {}\nBaseline1 started {}\nDuration in between is {}'.format(start_rec_date, begin_date, pre_rec_duration))
     n = int(4*24*3600*sr) +1
     times = np.arange(f.getNSamples()[0])/sr
+    # times = times.astype('float32')
     ###########sr somnologica = 199.985
     start_sleep_lab = start_rec_date + datetime.timedelta(seconds=int(pre_rec_duration.total_seconds()*sr)/sr)
     stop_sleep_lab = start_sleep_lab + datetime.timedelta(seconds = n/sr)
@@ -68,6 +69,7 @@ def edf_to_dataset(mouse):
     sliced_signal = f.readSignal(chn = channel_num, start =  index_start, n = n)
     sliced_time_in_hours =times[index_start:index_start+n]/3600 -(24*d + h + m/60 + s/3600) +8
     sliced_time_in_seconds = sliced_time_in_hours*3600
+    sliced_signal = sliced_signal.astype('float32')
 
     # print(real_times[index_start], real_times[index_start+n])
     # print(times.size)
@@ -75,15 +77,16 @@ def edf_to_dataset(mouse):
     # print(3600*sliced_signal.size/sr)
     ##### Store to dataset and save
     # coords = {'times_second' : sliced_time_in_seconds, 'times_hour' : sliced_time_in_hours}
-    coords = {'times_second' : sliced_time_in_seconds}
-    ds = xr.Dataset(coords = coords)
-    # ds = xr.Dataset()
 
-    ds['signal'] = xr.DataArray(sliced_signal, dims = 'times_second')
-    # ds['signal'] = xr.DataArray(sliced_signal)
+    # coords = {'times_second' : sliced_time_in_seconds}
+    # ds = xr.Dataset(coords = coords)
+    ds = xr.Dataset()
+
+    # ds['signal'] = xr.DataArray(sliced_signal, dims = 'times_second')
+    ds['signal'] = xr.DataArray(sliced_signal)
     ds['sampling_rate'] = sr
 
-
+    # exit()
     saving_path = precompute_dir +'/raw/'
     if not os.path.exists(saving_path):
         os.makedirs(saving_path)
