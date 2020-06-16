@@ -10,6 +10,7 @@ def average_baseline_spectrum(spectrum_method = 'somno'):
             states = ['w', 'n', 'r', 'a']
         for state in states :
             period = 'light'
+            print(dirname+'/spectrum_{}_{}_bl1_{}.xlsx'.format(spectrum_method, state, period))
             df1 = pd.read_excel(dirname+'/spectrum_{}_{}_bl1_{}.xlsx'.format(spectrum_method, state, period), index_col =0)
             df2 = pd.read_excel(dirname+'/spectrum_{}_{}_bl2_{}.xlsx'.format(spectrum_method, state, period), index_col =0)
             mice1 = df1.index
@@ -239,11 +240,35 @@ def average_recovery_fragmentation_mean():
                 df.loc[mouse, 'mean_duration'] = weighted_mean
             df.to_excel(dirname+'/{}/{}_recovery_{}.xlsx'.format(state, state, period))
 
+def fusion_baseline_recovery_REM_latency():
+    for m, merging in enumerate(['Baseline', 'Recovery']):
+        day1, day2 = 2*m+1, 2*(m+1)
+        for group in ['Control', 'DCR-HCRT']:
+            dirname = excel_dir + '/{}/REM_latency/'.format(group)
+            for period in ['dark', 'light']:
+                df1 = pd.read_excel(dirname+'/REM_latency_{}_{}{}.xlsx'.format(group, period,day1), index_col =0)
+                df2 = pd.read_excel(dirname+'/REM_latency_{}_{}{}.xlsx'.format(group, period,day2), index_col =0)
+                df = pd.DataFrame(index = df1.index, columns = np.arange(4))
+                mice = np.unique(df1.index.to_list()+df2.index.to_list())
+                for mouse in mice:
+                    list1 = df1.loc[mouse,:]
+                    list2 = df2.loc[mouse,:]
+                    list1 = list1[~np.isnan(list1)].tolist()
+                    list2 = list2[~np.isnan(list2)].tolist()
+                    latencies = list1 + list2
+                    if len(df.columns.to_list())<len(latencies):
+                        df = df.reindex(columns = np.arange(len(latencies)))
+                    df.loc[mouse, np.arange(len(latencies))] = np.array(latencies)
+                filename = dirname + 'REM_latency_{}_{}_{}.xlsx'.format(merging, group, period)
+                df.to_excel(filename)
+
+
 
 if __name__ == '__main__':
-    # average_baseline_spectrum()
-    # average_recovery_spectrum()
+    # average_baseline_spectrum('welch')
+    # average_recovery_spectrum('welch')
     # average_baseline_fragmentation()
     # average_recovery_fragmentation()
-    average_baseline_fragmentation_mean()
-    average_recovery_fragmentation_mean()
+    # average_baseline_fragmentation_mean()
+    # average_recovery_fragmentation_mean()
+    fusion_baseline_recovery_REM_latency()
