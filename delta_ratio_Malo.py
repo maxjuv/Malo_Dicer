@@ -9,9 +9,9 @@ import scipy.stats
 local_path = os.path.dirname(os.path.realpath(__file__))
 print(local_path)
 
-def wake_bandwidth_power_percentile(bandwidth = [6,9],group ='Control', spectrum_method = 'somno'):
+def wake_bandwidth_power_percentile(bandwidth = [6,9],state = 'w', group ='Control', spectrum_method = 'somno'):
     debug =0
-    state = 'w'
+    # state = 'w'
     if not debug:
         dirname = excel_dir + '{}/EEG_power_time_course/{}/{}hz_to_{}hz_power/'.format(group, state,  bandwidth[0], bandwidth[1])
         if not os.path.exists(dirname):
@@ -155,7 +155,7 @@ def wake_bandwidth_power_percentile(bandwidth = [6,9],group ='Control', spectrum
 
 def plot_compare_wake(bandwidth = [5,10], spectrum_method = 'somno', agg_type='median'):
     state = 'w'
-    fig, ax = plt.subplots(figsize = (20,20))
+    fig, ax = plt.subplots(figsize = (10,5))
     group_color = {'Control':'black', 'DCR-HCRT':'seagreen'}
     style = {'Control' : 'o', 'DCR-HCRT':'square'}
     stat = []
@@ -195,24 +195,32 @@ def plot_compare_wake(bandwidth = [5,10], spectrum_method = 'somno', agg_type='m
         print(pvalue)
 
         if pvalue < .05:
-            ax.text(time_course[i], 1.05*ymin, '*')
+            ax.text(time_course[i], 1.01*ymin, '*', fontsize = 15)
         elif pvalue < .01:
-            ax.text(time_course[i], 1.05*ymin, '*\n*')
+            ax.text(time_course[i], 1.01*ymin, '*\n*', fontsize = 15)
         # elif pvalue < .1:
         #     ax.text(time_course[i], 80, 'a')
+
     fig.suptitle('bandwidth = {}, state = {}, spectrum = {}, agg = {}'.format(bandwidth, state, spectrum_method, agg_type))
-    ax.legend()
+    # plt.rcParams.update({'font.size': 40})
+    ax.set_xticks(np.arange(16)*6)
+    ax.set_xticklabels(np.arange(16)*6%24)
+    # plt.rc('xtick', labelsize=40)    # fontsize of the tick labels
+    # plt.rc('ytick', labelsize=40)
+    ax.tick_params(axis='both', which='major', labelsize=10)
+
+    ax.legend(frameon = False, fontsize = 10, loc =2)
     # plt.show()
     # exit()
     # fig.suptitle('w {} {}hz to {}hz power'.format(spectrum_method, bandwidth[0], bandwidth[1]))
     dirname = excel_dir + 'Control/EEG_power_time_course/w/'
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-    fig.savefig(dirname + 'w_{}_{}hz_to_{}hz_power_{}.png'.format(spectrum_method, bandwidth[0], bandwidth[1], agg_type))
+    fig.savefig(dirname + 'w_{}_{}hz_to_{}hz_power_{}.png'.format(spectrum_method, bandwidth[0], bandwidth[1], agg_type), dpi = 1200)
     dirname = excel_dir + 'DCR-HCRT/EEG_power_time_course/w/'
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-    fig.savefig(dirname + 'w_{}_{}hz_to_{}hz_power_{}.png'.format(spectrum_method, bandwidth[0], bandwidth[1], agg_type))
+    fig.savefig(dirname + 'w_{}_{}hz_to_{}hz_power_{}.png'.format(spectrum_method, bandwidth[0], bandwidth[1], agg_type), dpi = 1200)
     # plt.show()
 
 
@@ -358,7 +366,7 @@ def sleep_bandwidth_power_percentile(bandwidth = [.75,4], group ='Control', stat
         plt.show()
     return  final_ZT, final_delta
 def plot_compare_sleep(bandwidth = [.75, 4], state = 'n', spectrum_method = 'somno', agg_type='median'):
-    fig, ax = plt.subplots(figsize = (20,20))
+    fig, ax = plt.subplots(figsize = (10, 5))
     group_color = {'Control':'black', 'DCR-HCRT':'seagreen'}
     style = {'Control' : 'o', 'DCR-HCRT':'square'}
     stat = []
@@ -399,24 +407,30 @@ def plot_compare_sleep(bandwidth = [.75, 4], state = 'n', spectrum_method = 'som
         print(pvalue)
 
         if pvalue < .05:
-            ax.text(time_course[i], 1.05*ymin, '*')
+            ax.text(time_course[i], 1.01*ymin, '*', fontsize = 15)
         elif pvalue < .01:
-            ax.text(time_course[i], 1.05*ymin, '*\n*')
+            ax.text(time_course[i], 1.01*ymin, '*\n*', fontsize = 15)
         # elif pvalue < .1:
         #     ax.text(time_course[i], 80, 'a')
-    fig.suptitle('bandwidth = {}, state = {}, spectrum = {}, agg = {}'.format(bandwidth, state, spectrum_method, agg_type))
-    ax.legend()
-    # plt.show()
-    # exit()
+    fig.suptitle('bandwidth = {}, state = {}, spectrum = {}, agg = {}, test = {}'.format(bandwidth, state, spectrum_method, agg_type, test))
+    # ax.legend()
+    ax.set_xticks(np.arange(16)*6)
+    ax.set_xticklabels(np.arange(16)*6%24)
+    # plt.rc('xtick', labelsize=40)    # fontsize of the tick labels
+    # plt.rc('ytick', labelsize=40)
+    ax.tick_params(axis='both', which='major', labelsize=10)
+
+    ax.legend(frameon = False, fontsize = 10, loc =2)
+
     # fig.suptitle('{} {} {}hz to {}hz power'.format(state, spectrum_method, bandwidth[0], bandwidth[1]), agg_type)
     dirname = excel_dir + 'Control/EEG_power_time_course/{}/'.format(state)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-    fig.savefig(dirname + '{}_{}_{}hz_to_{}hz_power_{}.png'.format(state, spectrum_method, bandwidth[0], bandwidth[1], agg_type))
+    fig.savefig(dirname + '{}_{}_{}hz_to_{}hz_power_{}.png'.format(state, spectrum_method, bandwidth[0], bandwidth[1], agg_type), dpi = 1200)
     dirname = excel_dir + 'DCR-HCRT/EEG_power_time_course/{}/'.format(state)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-    fig.savefig(dirname + '{}_{}_{}hz_to_{}hz_power_{}.png'.format(state, spectrum_method, bandwidth[0], bandwidth[1], agg_type))
+    fig.savefig(dirname + '{}_{}_{}hz_to_{}hz_power_{}.png'.format(state, spectrum_method, bandwidth[0], bandwidth[1], agg_type), dpi = 1200)
     # plt.show()
 
 
@@ -1123,4 +1137,10 @@ if __name__ == '__main__':
     plot_compare_wake(bandwidth = [.75,4], spectrum_method = 'welch', agg_type='median')
     plot_compare_sleep(bandwidth = [6,9],state = 'r', spectrum_method = 'welch', agg_type='median')
     plot_compare_sleep(bandwidth = [.75,4],state = 'n', spectrum_method = 'welch', agg_type='median')
+
+    plot_compare_wake(bandwidth = [6,9], spectrum_method = 'welch', agg_type='mean')
+    plot_compare_wake(bandwidth = [32,45], spectrum_method = 'welch', agg_type='mean')
+    plot_compare_wake(bandwidth = [.75,4], spectrum_method = 'welch', agg_type='mean')
+    plot_compare_sleep(bandwidth = [6,9],state = 'r', spectrum_method = 'welch', agg_type='mean')
+    plot_compare_sleep(bandwidth = [.75,4],state = 'n', spectrum_method = 'welch', agg_type='mean')
     plt.show()
