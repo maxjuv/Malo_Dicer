@@ -10,7 +10,11 @@ def get_clear_spectral_score_one_mouse_one_condition(mouse, condition, state):
     debug = False
     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
     times = ds.coords['times_somno'].values/3600
-    score = ds['score'].values
+    # score = ds['score'].values
+    dirname = precompute_dir + '/tdw_score/'
+    ds_tdw = xr.open_dataset(dirname + 'tdw_score_{}.nc'.format(mouse))
+    score = ds_tdw['new_score'].values
+
 
     if condition == 'bl1':
         t2 = 24
@@ -31,6 +35,7 @@ def get_clear_spectral_score_one_mouse_one_condition(mouse, condition, state):
     score = score[mask]
 
     score_no_artifact = score == state
+
     score_no_transition = score_no_artifact.copy()
     count = 0
     event_length = []
@@ -82,6 +87,7 @@ def get_relative_spectrums_one_mouse_one_condition(mouse, condition, spectrum_me
     debug = 0
     cleared_score_w, _= get_clear_spectral_score_one_mouse_one_condition(mouse, condition, 'w')
     cleared_score_r, _ = get_clear_spectral_score_one_mouse_one_condition(mouse, condition, 'r')
+    cleared_score_t, _ = get_clear_spectral_score_one_mouse_one_condition(mouse, condition, 't')
     cleared_score_n, mask_condition = get_clear_spectral_score_one_mouse_one_condition(mouse, condition, 'n')
 
     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
@@ -90,21 +96,24 @@ def get_relative_spectrums_one_mouse_one_condition(mouse, condition, spectrum_me
     freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
     spectrum = spectrum[mask_condition, :]
 
-    total_epochs = sum(cleared_score_w) + sum(cleared_score_r) + sum(cleared_score_n)
+    total_epochs = sum(cleared_score_w) + sum(cleared_score_r) + sum(cleared_score_n) + sum(cleared_score_t)
 
     proportion_w = sum(cleared_score_w)/total_epochs
     proportion_r = sum(cleared_score_r)/total_epochs
     proportion_n = sum(cleared_score_n)/total_epochs
+    proportion_t = sum(cleared_score_t)/total_epochs
 
-    absolute_spectrum_w = np.mean(spectrum[cleared_score_w, :], axis = 0)
-    absolute_spectrum_r = np.mean(spectrum[cleared_score_r, :], axis = 0)
-    absolute_spectrum_n = np.mean(spectrum[cleared_score_n, :], axis = 0)
+    absolute_spectrum_w = np.median(spectrum[cleared_score_w, :], axis = 0)
+    absolute_spectrum_r = np.median(spectrum[cleared_score_r, :], axis = 0)
+    absolute_spectrum_n = np.median(spectrum[cleared_score_n, :], axis = 0)
+    absolute_spectrum_t = np.median(spectrum[cleared_score_t, :], axis = 0)
 
     #########CAUTION power spectrum is area under curv#########
     auc_w = auc(freqs, absolute_spectrum_w)
     auc_r = auc(freqs, absolute_spectrum_r)
     auc_n = auc(freqs, absolute_spectrum_n)
-    ref_values = proportion_w*auc_w + proportion_r*auc_r + proportion_n*auc_n
+    auc_t = auc(freqs, absolute_spectrum_t)
+    ref_values = proportion_w*auc_w + proportion_r*auc_r + proportion_n*auc_n + proportion_t*auc_t
 
 
     ####FALSE
@@ -144,19 +153,24 @@ def get_relative_spectrums_one_mouse_one_condition(mouse, condition, spectrum_me
         ax.plot(absolute_spectrum_w, color = 'blue')
         ax.plot(absolute_spectrum_r, color = 'blue')
         ax.plot(absolute_spectrum_n, color = 'blue')
+        ax.plot(absolute_spectrum_t, color = 'blue')
 
         ax.plot(relative_spectrum_w, color = 'green')
-        ax.plot(relative_spectrum_r, color = 'green', alpha = .66)
-        ax.plot(relative_spectrum_n, color = 'green', alpha = .33)
+        ax.plot(relative_spectrum_r, color = 'green', alpha = .75)
+        ax.plot(relative_spectrum_n, color = 'green', alpha = .50)
+        ax.plot(relative_spectrum_t, color = 'green', alpha = .25)
         plt.show()
 
-    return ref_values, {'w' : relative_spectrum_w, 'r':relative_spectrum_r, 'n' :relative_spectrum_n}
+    return ref_values, {'w' : relative_spectrum_w, 't' : relative_spectrum_t, 'r':relative_spectrum_r, 'n' :relative_spectrum_n}
 
 def get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition, state, period = 'light'):
     debug = 0
     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
     times = ds.coords['times_somno'].values/3600
-    score = ds['score'].values
+    # score = ds['score'].values
+    dirname = precompute_dir + '/tdw_score/'
+    ds_tdw = xr.open_dataset(dirname + 'tdw_score_{}.nc'.format(mouse))
+    score = ds_tdw['new_score'].values
 
     if condition == 'bl1':
         if period == 'light':
@@ -244,6 +258,7 @@ def get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition,
 def get_relative_spectrums_one_mouse_one_condition_day_night(mouse, condition, spectrum_method = 'somno', period = 'light'):
     debug = 0
     cleared_score_w, _= get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition, 'w', period = period)
+    cleared_score_t, _= get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition, 't', period = period)
     cleared_score_r, _ = get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition, 'r', period = period)
     cleared_score_n, mask_condition = get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition, 'n', period = period)
 
@@ -253,15 +268,17 @@ def get_relative_spectrums_one_mouse_one_condition_day_night(mouse, condition, s
     freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
     spectrum = spectrum[mask_condition, :]
 
-    total_epochs = sum(cleared_score_w) + sum(cleared_score_r) + sum(cleared_score_n)
+    total_epochs = sum(cleared_score_w) + sum(cleared_score_r) + sum(cleared_score_n) + sum(cleared_score_t)
 
     proportion_w = sum(cleared_score_w)/total_epochs
     proportion_r = sum(cleared_score_r)/total_epochs
     proportion_n = sum(cleared_score_n)/total_epochs
+    proportion_t = sum(cleared_score_t)/total_epochs
 
-    absolute_spectrum_w = np.nanmean(spectrum[cleared_score_w, :], axis = 0)
-    absolute_spectrum_r = np.nanmean(spectrum[cleared_score_r, :], axis = 0)
-    absolute_spectrum_n = np.nanmean(spectrum[cleared_score_n, :], axis = 0)
+    absolute_spectrum_w = np.nanmedian(spectrum[cleared_score_w, :], axis = 0)
+    absolute_spectrum_r = np.nanmedian(spectrum[cleared_score_r, :], axis = 0)
+    absolute_spectrum_n = np.nanmedian(spectrum[cleared_score_n, :], axis = 0)
+    absolute_spectrum_t = np.nanmedian(spectrum[cleared_score_t, :], axis = 0)
 
     df = (freqs[11]-freqs[1])/10
 
@@ -270,6 +287,11 @@ def get_relative_spectrums_one_mouse_one_condition_day_night(mouse, condition, s
         sum_w = np.sum(absolute_spectrum_w)*df
     else:
         sum_w =0
+
+    if np.sum(cleared_score_t) !=0:
+        sum_t = np.sum(absolute_spectrum_t)*df
+    else:
+        sum_t =0
 
     if np.sum(cleared_score_r) !=0:
         sum_r = np.sum(absolute_spectrum_r)*df
@@ -300,12 +322,13 @@ def get_relative_spectrums_one_mouse_one_condition_day_night(mouse, condition, s
     # sum_w = np.sum(absolute_spectrum_w)*df
     # sum_r = np.sum(absolute_spectrum_r)*df
     # sum_n = np.sum(absolute_spectrum_n)*df
-    ref_values = (proportion_w*sum_w + proportion_r*sum_r + proportion_n*sum_n)
+    ref_values = (proportion_w*sum_w + proportion_r*sum_r + proportion_n*sum_n + proportion_t*sum_t)
 
 
     relative_spectrum_w = 100*absolute_spectrum_w / ref_values
     relative_spectrum_r = 100*absolute_spectrum_r / ref_values
     relative_spectrum_n = 100*absolute_spectrum_n / ref_values
+    relative_spectrum_t = 100*absolute_spectrum_t / ref_values
 
     # print(ref_values)
     # fig, ax = plt.subplots()
@@ -326,18 +349,20 @@ def get_relative_spectrums_one_mouse_one_condition_day_night(mouse, condition, s
         ax.plot(absolute_spectrum_w, color = 'blue')
         ax.plot(absolute_spectrum_r, color = 'blue')
         ax.plot(absolute_spectrum_n, color = 'blue')
+        ax.plot(absolute_spectrum_t, color = 'blue')
 
         ax.plot(relative_spectrum_w, color = 'green')
-        ax.plot(relative_spectrum_r, color = 'green', alpha = .66)
-        ax.plot(relative_spectrum_n, color = 'green', alpha = .33)
+        ax.plot(relative_spectrum_r, color = 'green', alpha = .75)
+        ax.plot(relative_spectrum_n, color = 'green', alpha = .5)
+        ax.plot(relative_spectrum_t, color = 'green', alpha = .25)
         plt.show()
     if mouse in get_mice('DCR-HCRT'):
         cleared_score_a, _ = get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, condition, 'a', period = period)
         absolute_spectrum_a = np.mean(spectrum[cleared_score_a, :], axis = 0)
         relative_spectrum_a = 100*absolute_spectrum_a / ref_values
-        return ref_values, {'w' : relative_spectrum_w, 'r':relative_spectrum_r, 'n' :relative_spectrum_n, 'a' :relative_spectrum_a}
+        return ref_values, {'w' : relative_spectrum_w, 't' : relative_spectrum_t, 'r':relative_spectrum_r, 'n' :relative_spectrum_n, 'a' :relative_spectrum_a}
     else :
-        return ref_values, {'w' : relative_spectrum_w, 'r':relative_spectrum_r, 'n' :relative_spectrum_n}
+        return ref_values, {'w' : relative_spectrum_w, 't' : relative_spectrum_t,'r':relative_spectrum_r, 'n' :relative_spectrum_n}
 
 
 
@@ -350,7 +375,7 @@ def plot_spectrum_compare_global(spectrum_method = 'somno'):
     freqs = ds.coords['freqs_{}'.format(spectrum_method)].values.tolist()
 
     indices = []
-    for state in ['w', 'n', 'r']:
+    for state in ['w', 'n', 'r', 't']:
         for session in ['bl1', 'bl2', 'sd', 'r1' ]:
             indices+=([i + '_'+session+ '_'+state for i in control_list+ DCR_list])
     df_spectrum = pd.DataFrame(index = indices, columns = ['group', 'session', 'state', 'ref_values'] + freqs)
@@ -364,7 +389,7 @@ def plot_spectrum_compare_global(spectrum_method = 'somno'):
             ZT = ds.coords['times_somno'].values
             print('collecting relative spectrums ', mouse)
 
-            states = ['w', 'n', 'r']
+            states = ['w', 'n', 'r', 't']
             conditions = ['bl1', 'bl2', 'sd', 'r1']
 
             for condition in conditions:
@@ -377,10 +402,10 @@ def plot_spectrum_compare_global(spectrum_method = 'somno'):
                     df_spectrum.at['{}_{}_{}'.format(mouse,condition, state), 4:] = relative_spectrums[state]
 
         # df_spectrum = df_spectrum.dropna()
-    fig,ax = plt.subplots(nrows = 4, ncols= 3, sharex = True, sharey = True)
+    fig,ax = plt.subplots(nrows = 4, ncols= 4, sharex = True, sharey = True)
     fig.suptitle('Spectrum per state')
 
-    fig_diff, ax_diff = plt.subplots(nrows = 4, ncols= 3, sharex = True, sharey = True)
+    fig_diff, ax_diff = plt.subplots(nrows = 4, ncols= 4, sharex = True, sharey = True)
     fig_diff.suptitle('Diff DCR - ctrl')
     for row, session in enumerate(conditions):
         for col, state in enumerate(states):
@@ -396,7 +421,7 @@ def plot_spectrum_compare_global(spectrum_method = 'somno'):
             #     data_dcr[i] = data_dcr[i]/maxi
             # for i, maxi in enumerate(np.max(data_ctrl, axis = 1)):
             #     data_ctrl[i] = data_ctrl[i]/maxi
-            diff = np.mean(data_dcr, axis=0) - np.mean(data_ctrl, axis=0)
+            diff = np.median(data_dcr, axis=0) - np.median(data_ctrl, axis=0)
             # ax[row, col].plot(data.T, color = 'black', alpha = .1)
             # ax[row, col].plot(data.mean(axis = 0), color = 'red')
             ax_diff[row, col].plot(freqs, diff )
@@ -409,7 +434,7 @@ def plot_spectrum_compare_global(spectrum_method = 'somno'):
                 print(group, session, state)
                 data = df_spectrum[(df_spectrum.session == session) & (df_spectrum.group == group) & (df_spectrum.state == state)]
                 data = (data[freqs]).values
-                plot = np.mean(data, axis=0)
+                plot = np.median(data, axis=0)
                 # inf, med, sup = np.percentile(data, [25,50,75], axis=0)
                 # inf = np.array(inf, dtype = 'float64')
                 # sup = np.array(sup, dtype = 'float64')
@@ -620,10 +645,11 @@ def plot_spectrum_compare_day_night(spectrum_method = 'somno', period = 'light')
     DCR_list = get_mice('DCR-HCRT')
     groups = {'Control' : control_list, 'DCR-HCRT' : DCR_list}
     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_B2533.nc')
-    freqs = ds.coords['freqs_{}'.format(spectrum_method)].values.tolist()
+    freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
+    freqs = np.round(freqs, 2).tolist()
 
     indices = []
-    for state in ['w', 'n', 'r']:
+    for state in ['w', 't', 'n', 'r']:
         for session in ['bl1', 'bl2', 'sd', 'r1' ]:
             indices+=([i + '_'+session+ '_'+state for i in control_list+ DCR_list])
     df_spectrum = pd.DataFrame(index = indices, columns = ['group', 'session', 'state', 'ref_values'] + freqs)
@@ -634,10 +660,12 @@ def plot_spectrum_compare_day_night(spectrum_method = 'somno', period = 'light')
         for mouse in groups[group]:
             ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
             freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
+            freqs = np.round(freqs, 2)
+
             ZT = ds.coords['times_somno'].values
             print('collecting relative spectrums ', mouse)
 
-            states = ['w', 'n', 'r']
+            states = ['w', 't', 'n', 'r']
             conditions = ['bl1', 'bl2', 'sd', 'r1']
 
             for condition in conditions:
@@ -650,10 +678,10 @@ def plot_spectrum_compare_day_night(spectrum_method = 'somno', period = 'light')
                     df_spectrum.at['{}_{}_{}'.format(mouse,condition, state), 4:] = relative_spectrums[state]
 
         # df_spectrum = df_spectrum.dropna()
-    fig,ax = plt.subplots(nrows = 4, ncols= 3, sharex = True, sharey = True)
+    fig,ax = plt.subplots(nrows = 4, ncols= 4, sharex = True, sharey = True)
     fig.suptitle('Spectrum per state -- ' + period)
 
-    fig_diff, ax_diff = plt.subplots(nrows = 4, ncols= 3, sharex = True, sharey = True)
+    fig_diff, ax_diff = plt.subplots(nrows = 4, ncols= 4, sharex = True, sharey = True)
     fig_diff.suptitle('Diff DCR - ctrl')
 
     for i in range(4):
@@ -667,6 +695,9 @@ def plot_spectrum_compare_day_night(spectrum_method = 'somno', period = 'light')
             # print(df_spectrum[(df_spectrum.session == session)& (df_spectrum.state == state)])
             data_dcr = df_spectrum[(df_spectrum.session == session) & (df_spectrum.group == 'DCR-HCRT') & (df_spectrum.state == state)]
             data_ctrl = df_spectrum[(df_spectrum.session == session) & (df_spectrum.group == 'Control') & (df_spectrum.state == state)]
+            print(data_dcr)
+            print(data_dcr.columns)
+            print(freqs)
             data_dcr = data_dcr.dropna()
             data_ctrl = data_ctrl.dropna()
             data_dcr = (data_dcr[freqs]).values
@@ -726,13 +757,17 @@ def plot_spectrum_by_mouse(spectrum_method = 'somno'):
             freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
             print(mouse)
             period_color = {'dark' : 'black', 'light': 'grey'}
-            states = ['w', 'n', 'r']
+            if group == 'Control':
+                states = ['w', 't', 'n', 'r']
+            elif group == 'DCR-HCRT':
+                states = ['w', 't', 'n', 'r', 'a']
             conditions = ['bl1', 'bl2', 'sd', 'r1']
-            fig, ax = plt.subplots(nrows = 4, ncols= 4, sharex = True)
+            fig, ax = plt.subplots(nrows = 4, ncols= 5, sharex = True)
             ax[0,0].set_title('wake')
-            ax[0,1].set_title('nrem')
-            ax[0,2].set_title('rem')
-            ax[0,3].set_title('cata')
+            ax[0,1].set_title('tdw')
+            ax[0,2].set_title('nrem')
+            ax[0,3].set_title('rem')
+            ax[0,4].set_title('cata')
             ax[0,0].set_ylabel('bl1')
             ax[1,0].set_ylabel('bl2')
             ax[2,0].set_ylabel('sd')
@@ -745,7 +780,7 @@ def plot_spectrum_by_mouse(spectrum_method = 'somno'):
                     for row, state in enumerate(states) :
                         ax[col,row].plot(freqs, relative_spectrums[state], color = period_color[period])
                         ax[col,row].set_xlim(0,15)
-            dirname = work_dir+'/pyFig/{}/{}/power_spectrum/'.format(spectrum_method, group)
+            dirname = work_dir+'/pyFig/{}/power_spectrum/{}/'.format(group, spectrum_method)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
             plt.savefig(dirname + mouse+'.png')
@@ -753,12 +788,15 @@ def plot_spectrum_cataplexy_day_night(spectrum_method = 'somno', period = 'light
     DCR_list = get_mice('DCR-HCRT')
     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_B2533.nc')
     freqs = ds.coords['freqs_{}'.format(spectrum_method)].values.tolist()
+    freqs = np.round(freqs, 2).tolist()
 
     df_spectrum = pd.DataFrame(columns = ['group','session','state', 'ref_values'] + freqs)
 
     for mouse in DCR_list:
         ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
         freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
+        freqs = np.round(freqs, 2)
+
         ZT = ds.coords['times_somno'].values
         print('collecting relative spectrums ', mouse)
         conditions = ['bl1', 'bl2', 'sd', 'r1']
@@ -800,6 +838,38 @@ def plot_spectrum_cataplexy_day_night(spectrum_method = 'somno', period = 'light
             # plt.show()
     plt.show()
 
+
+def theta_peak_frequency(spectrum_method = 'welch', state = 'r'):
+    periods = ['dark', 'light']
+    conditions = ['bl1', 'bl2', 'sd', 'r1']
+    control_list = get_mice('Control')
+    DCR_list = get_mice('DCR-HCRT')
+    if state == 'r':
+        groups = {'Control' : control_list, 'DCR-HCRT' : DCR_list}
+    elif state == 'a':
+        groups = {'DCR-HCRT' : DCR_list}
+    for period in periods :
+        for condition in conditions:
+            for group in groups:
+                df = pd.DataFrame(np.zeros((len(groups[group]),1)), index = groups[group], columns = ['TPF'])
+                for mouse in groups[group]:
+                    ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
+                    freqs = ds.coords['freqs_{}'.format(spectrum_method)].values
+                    fake_freqs = np.arange(freqs.size)*.25
+                    _, relative_spectrums = get_relative_spectrums_one_mouse_one_condition_day_night(mouse, condition, spectrum_method, period )
+                    spec = relative_spectrums[state]
+                    if spec[np.isnan(spec)==0].size >0 :
+                        TPF = fake_freqs[spec == np.max(spec)]
+                    else :
+                        TPF = np.nan
+                    df.at[mouse, 'TPF'] = TPF
+                print(df)
+
+                dirname = excel_dir + '/{}/TPF/{}/{}/{}/'.format(group, condition, period, state)
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
+                df.to_excel(dirname + 'TPF_{}_{}_{}_{}.xlsx'.format(group, condition, period, state))
+
 if __name__ == '__main__':
     # mouse = 'B3512'
     # mouse = 'B2534'
@@ -834,17 +904,23 @@ if __name__ == '__main__':
     # group = 'Control'
     # rec = 'b2'
     # compute_all()
+    # store_scoring_and_spectrums_one_mouse_one_session_day_(group, mouse)
+    # get_clear_spectral_score_one_mouse_one_condition(mouse, 'bl1', 'r')
+    # get_relative_spectrums_one_mouse_one_condition(mouse, 'bl1')
+
     # plot_spectrum_compare_global(spectrum_method = 'somno')
     # plot_spectrum_compare_day_night(spectrum_method = 'somno', period = 'dark')
     # plot_spectrum_compare_day_night(spectrum_method = 'somno', period = 'dark')
     plot_spectrum_compare_day_night(spectrum_method = 'welch', period = 'light')
-    plot_spectrum_compare_day_night(spectrum_method = 'welch', period = 'light')
-    # store_scoring_and_spectrums_one_mouse_one_session_day_(group, mouse)
-    # get_clear_spectral_score_one_mouse_one_condition(mouse, 'bl1', 'r')
-    # get_relative_spectrums_one_mouse_one_condition(mouse, 'bl1')
-    # plot_spectrum_cataplexy_day_night(period ='light')
-    # plot_spectrum_cataplexy_day_night(period ='dark')
+    plt.show()
+    plot_spectrum_compare_day_night(spectrum_method = 'welch', period = 'dark')
+    plt.show()
+    # plot_spectrum_cataplexy_day_night(spectrum_method = 'welch',period ='light')
+    # plot_spectrum_cataplexy_day_night(spectrum_method = 'welch',period ='dark')
     # get_clear_spectral_score_one_mouse_one_condition_day_night(mouse, 'bl1', 'r', 'dark')
     # get_relative_spectrums_one_mouse_one_condition_day_night(mouse = mouse, condition ='bl1', spectrum_method = 'somno', period = 'dark')
-    plot_spectrum_by_mouse('welch')
-    plt.show()
+    # plot_spectrum_by_mouse('welch')
+    # plt.show()
+
+    # theta_peak_frequency(state='r')
+    # theta_peak_frequency(state = 'a')
