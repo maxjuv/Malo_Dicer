@@ -9,19 +9,20 @@ from joblib import Parallel, delayed
 
 windows = 4   #### in s
 
-#
-def vectorial_power_spectrum(mouse):
-    print(mouse)
+
+def compute_own_spectrum(mouse):
+    print('compute own spectrum mouse : ',mouse )
     ds = xr.open_dataset(precompute_dir + '/raw/raw_{}.nc'.format(mouse))
-    raw = ds['signal'].values
-    times = ds.coords['times_second'].values
-    t_start = times[0]
+    raw = ds['signal'].values.astype('float32')
     sr = ds['sampling_rate'].values
-    # n_epochs = ((times[-1] - times[0]))//windows
+    #
+    # times = ds.coords['times_second'].values
+    times = np.arange(raw.size)/(sr*3600)
+
+    t_start = times[0]
     n_epochs = int(raw.size//(windows*sr))
 
     point_per_epochs = int(4*sr)#800    ##### 4 sec at about 200 HZ   199,6
-
     ###### highpass filter 0.5 Hz
     N =3
     f_cut = .5
@@ -29,145 +30,84 @@ def vectorial_power_spectrum(mouse):
     W = f_cut/nyq
     b, a = scipy.signal.butter(N, W, btype = 'highpass', output = 'ba')
     raw = scipy.signal.filtfilt(b,a, raw)
-
-
-
+    #
     bandwidth = 1.01/windows
     epochs = np.arange(n_epochs)
     sample_per_epoch = int(windows*sr)
-
-
+    mylist = []
+    index = []
+    for i in range(n_epochs):
+        mylist.append(4*i*sr)
+    real_sample_by_epoch= np.diff(np.array(mylist, dtype='int'))
+    ind = 0
+    for fr in real_sample_by_epoch:
+        fr = int(fr)
+        ind += fr
+        if fr == 799:
+            index.append(ind)
+    index = np.array(index, dtype ='int')+1
+    ref = 69120000
+    if raw.size + index.size != ref:
+        index = index[:-(raw.size + index.size-ref)]
+    raw = np.insert(raw, index, raw[index])
     point_per_epochs = 800
+    stacked_sigs = raw.reshape((-1, point_per_epochs)).astype('float32')
 
-
-    sample_per_2epoch = int(100*windows*sr)
-    n_2epochs = int(raw.size//(100*windows*sr))
-    rest = int(raw.size - sample_per_2epoch*n_2epochs)
-    # rest = int(raw.size - sample_per_epoch*n_epochs)
-    print(rest)
-    raw = raw[:-rest]
-    stacked_sigs = raw.copy()
-    # stacked_sigs = stacked_sigs.reshape((int(n_epochs), sample_per_epoch))
-    print(stacked_sigs.shape)
-    stacked_sigs = stacked_sigs.reshape((int(n_2epochs), sample_per_2epoch))
-    # filling = (stacked_sigs[:,-1])
-    # filling = filling.reshape((filling.size,1))
-    filling = stacked_sigs[:,-6:]
-    stacked_sigs = np.concatenate((stacked_sigs,filling), axis = 1)
-    stacked_sigs = stacked_sigs.reshape((int(n_epochs), point_per_epochs))
-    print(stacked_sigs.shape)
-    # exit()
-    ###### 6hz oscillation trial
-    # stacked_sigs = np.arange(8000)*6*2*np.pi/sr
-    # stacked_sigs = stacked_sigs.reshape(10,800)
-    # stacked_sigs = np.sin(stacked_sigs)
-
+    print(stacked_sigs.dtype)
+    #
     freqs_welch, welch = scipy.signal.welch(stacked_sigs, fs = sr, nperseg = int(3.99*sr) )
     welch = welch[:,(freqs_welch>=.75) & (freqs_welch<=47.5)]
     freqs_welch = freqs_welch[(freqs_welch>.75) & (freqs_welch<=47.5)]
+    print(welch.shape)
     print('here')
-    fft = np.fft.fft(stacked_sigs)
-    fft = np.abs(fft)**2
-    # fft = fft[:,0:int(fft.size/2)]
-    # freqs_fft = np.linspace(0, sr/2, point_per_epochs/2)
-    # print(fft.shape, freqs_fft.shape)
-    freqs_fft = np.fft.fftfreq(point_per_epochs, 1/sr)
-    idx = np.argsort(freqs_fft)
-    freqs_fft = freqs_fft[idx]
-    fft = fft[:,idx]
-    fft = fft[:,(freqs_fft>=.75)&(freqs_fft<=47.5)]
-    freqs_fft = freqs_fft[(freqs_fft>=.75)&(freqs_fft<=47.5)]
+
+    # fft = scipy.fft.fft(stacked_sigs)
+    # Fourier = np.fft.fft(stacked_sigs)
+    # Fourier = np.fft.fft(np.random.rand(welch.shape))
+    # Fourier = np.fft.fft(np.random.rand(10,10))
+    # Fourier = F(stacked_sigs)
+    # print(Fourier.shape)
+    # Fourier = np.abs(Fourier)**2
+    # Fourier =  np.abs(np.fft.fft(stacked_sigs))**2
+    # freqs_Fourier = np.fft.fftfreq(point_per_epochs, 1/sr)
+    # idx = np.argsort(freqs_Fourier)
+    # freqs_Fourier = freqs_Fourier[idx]
+    # Fourier = Fourier[:,idx]
+    # Fourier = Fourier[:,(freqs_Fourier>=.75)&(freqs_Fourier<=47.5)]
+    # freqs_Fourier = freqs_Fourier[(freqs_Fourier>=.75)&(freqs_Fourier<=47.5)]
 
     multitaper, freqs_multitaper = mne.time_frequency.psd_array_multitaper(stacked_sigs, sfreq = sr, fmax = 47.5, bandwidth = 4*bandwidth, n_jobs = 2)
     multitaper = multitaper[:,freqs_multitaper>=.75]
     freqs_multitaper = freqs_multitaper[freqs_multitaper>=.75]
-    # times = np.arange(point_per_epochs)/sr
-    # for i in np.arange(2000):
-    #     fig, ax = plt.subplots(nrows = 4)
-    #     ax[0].plot(times, stacked_sigs[i])
-    #     ax[1].plot(freqs_multitaper, multitaper[i])
-    #     ax[1].set_ylabel('multitaper')
-    #     ax[2].plot(freqs_welch, welch[i])
-    #     ax[2].set_ylabel('welch')
-    #     ax[3].plot(freqs_fft, fft[i])
-    #     ax[3].set_ylabel('fft')
-    #     plt.show()
 
-    coords = {  'freqs_welch': freqs_welch,
-                'freqs_fft': freqs_fft,
-                'freqs_multitaper': freqs_multitaper,
-                'epochs' : epochs}
-    ds_spectrum = xr.Dataset(coords = coords)
-    ds_spectrum['welch_spectrum'] = xr.DataArray(welch, dims = ['epochs', 'freqs_welch'])
-    ds_spectrum['fft_spectrum'] = xr.DataArray(fft, dims = ['epochs', 'freqs_fft'])
-    ds_spectrum['multitaper_spectrum'] = xr.DataArray(multitaper, dims = ['epochs', 'freqs_multitaper'])
-    ds_spectrum['sampling_rate'] = sr
-    saving_path = precompute_dir + '/spectrums/'
-    if not os.path.exists(saving_path):
-        os.makedirs(saving_path)
-    print(saving_path)
-    ds_spectrum.to_netcdf(saving_path + 'spectrums_{}.nc'.format(mouse))
+    freqs_welch  = freqs_welch.astype('float32')
+    # freqs_Fourier  = freqs_Fourier.astype('float32')
+    freqs_multitaper  = freqs_multitaper.astype('float32')
+    epochs = epochs.astype('int32')
+    welch = welch.astype('float32')
+    # Fourier = Fourier.astype('float32')
+    multitaper = multitaper.astype('float32')
 
-def compute_one_welch(raw,times, w, t_start, sr):
-    mask = (times>t_start + windows*w) & (times<=t_start + windows*(w+1))
-    sig = raw[mask]
-    sig = sig - np.mean(sig)
-    freqs_welch, pxx = scipy.signal.welch(sig, fs = sr, nperseg = int(3.99*sr) )
-    pxx = pxx[(freqs_welch>.4) & (freqs_welch<=10)]
-    freqs_welch = freqs_welch[(freqs_welch>.4) & (freqs_welch<=10)]
-    return (int(w), np.array(pxx))
+    mydict = {  'freqs_welch' : freqs_welch,
+                # 'freqs_Fourier' : freqs_Fourier,
+                'freqs_multitaper' : freqs_multitaper,
+                'epochs' : epochs,
+                'welch' : welch,
+                # 'Fourier' : Fourier,
+                'multitaper' : multitaper}
+    return mydict
 
-def read_one_mouse_spectrums(mouse):
-    ds = xr.open_dataset(precompute_dir + '/spectrums/spectrums_{}.nc'.format(mouse))
-    print(ds)
-    freqs = ds.coords['freqs'].values
-    spectrums = ds['spectrum_by_epoch'].values
-    fig, ax = plt.subplots()
-    ax.plot(freqs, spectrums[15])
-    plt.show()
-
-def compute_all_spectrums_data():
-    date_ref = pd.read_excel(work_dir + 'datetime_reference_DICER.xls', index_col = 0)
-    mice = date_ref.index.to_list()
-    for mouse in mice:
-        mouse = mouse[4:]
-        vectorial_power_spectrum(mouse)
-
-def hack_dask():
-    run_key = sys.argv[1]
-    print(run_key, type(run_key))
-    sliding_power_spectrum(run_key)
-
-def store_all_score_and_spectrum():
-    dcr_mice = get_mice(group = 'DCR-HCRT')
-    control_mice = get_mice(group = 'Control')
-    animals_by_group = {'DCR-HCRT' : dcr_mice, 'Control' : control_mice}
-    for group in animals_by_group :
-        mice = animals_by_group[group]
-        results = Parallel(n_jobs=2)(delayed(store_scoring_and_spectrums_one_mouse_one_session)(group,mouse) for mouse in mice)
-        # for mouse in mice :
-        #     print(mouse)
-        #     # for rec in ['b1', 'b2', 'sd', 'r1']:
-        #         # try:
-        #     store_scoring_and_spectrums_one_mouse_one_session(group, mouse )
-                # except :
-                    # print('******* ERROR ******', mouse,rec, '*********')
-
-def compute_one_group(group =  'Control'):
-    mice = get_mice_for_spectrum(group)
-    for mouse in mice :
-        print(mouse)
-        for rec in ['b1', 'b2', 'sd', 'r1']:
-            try:
-                store_scoring_and_spectrums_one_mouse_one_session(group, mouse, rec)
-            except :
-                print('******* ERROR ******', mouse,rec, '*********')
-
-
-def store_scoring_and_spectrums_one_mouse_one_session(group, mouse):
+def store_scoring_and_spectrums_one_mouse_one_session(mouse):
     # print( 'compute {} session'.format(rec))
+    ctrl = get_mice('Control')
+    dcr = get_mice('DCR-HCRT')
+    group_mice = {'Control' : ctrl, 'DCR-HCRT':dcr}
+    if mouse in group_mice['Control'] :
+        group = 'Control'
+    elif mouse in group_mice['DCR-HCRT'] :
+        group = 'DCR-HCRT'
     #######         Extract scoring         #######
-
+    print('get scoring mouse : ',mouse )
     score_b1 = np.loadtxt(data_dir + '/Scoring/' + group + '/' + mouse + 'DCRb1.txt', dtype = str)
     score_b2 = np.loadtxt(data_dir + '/Scoring/' + group + '/' + mouse + 'DCRb2.txt', dtype = str)
     score_sd = np.loadtxt(data_dir + '/Scoring/' + group + '/' + mouse + 'DCRsd.txt', dtype = str)
@@ -178,16 +118,22 @@ def store_scoring_and_spectrums_one_mouse_one_session(group, mouse):
     all_score[one_day:int(one_day*2)] = score_b2
     all_score[int(2*one_day):int(3*one_day)] = score_sd
     all_score[int(3*one_day):int(4*one_day)] = score_r1
+    score_b1 = 0
+    score_b2 = 0
+    score_sd = 0
+    score_r1 = 0
+    # exit()
+    print('get scoring somnologica spectrum : ',mouse )
     file_b1 = open(data_dir + '/Power_spectrum/{}/MTA-{}/{}DCRb1s.txt'.format(group, mouse, mouse))
     file_b2 = open(data_dir + '/Power_spectrum/{}/MTA-{}/{}DCRb2s.txt'.format(group, mouse, mouse))
     file_sd = open(data_dir + '/Power_spectrum/{}/MTA-{}/{}DCRsds.txt'.format(group, mouse, mouse))
     file_r1 = open(data_dir + '/Power_spectrum/{}/MTA-{}/{}DCRr1s.txt'.format(group, mouse, mouse))
-    # file_r1 = open(data_spectrum_dir + '/{}/MTA-{}/{}DCRr1s.txt'.format(group, mouse, mouse))
+
+    # file_r1 = open(data_dir + '/Power_spectrum/{}/MTA-{}/{}DCRr1s.txt'.format(group, mouse, mouse))
     real_time_lines = []
     data_lines = []
     real_times_somno = []
     data = []
-    delta_power_somno = []
     for file in [file_b1, file_b2, file_sd, file_r1] :
         for i, line in enumerate(file.readlines()) :
             if line == 'Power Spectrum\n':
@@ -198,72 +144,116 @@ def store_scoring_and_spectrums_one_mouse_one_session(group, mouse):
             if i in data_lines :
                 spec = np.array(line.split('\t')[:-1], dtype = float)[4:]    ####Remove .5 Hz     #######
                 data.append(spec)
-                delta_power_somno.append(np.sum(spec[:15])) #####delta = .75 to 4Hz
+    score_b1 = 0
+    score_b2 = 0
+    score_sd = 0
+    score_r1 = 0
+    #
+    freqs_somno = np.arange(4, spec.size+4, 1, dtype = 'float32') * .25
+    times_somno = np.arange(len(real_times_somno), dtype='int32')*int(4)
 
-    print('finish')
-
-    freqs_somno = np.arange(4, spec.size+4, 1) * .25
-    times_somno = np.arange(len(real_times_somno))*int(4)
-
-    somno_spectrums = np.array(data)
+    somno_spectrums = np.array(data, dtype = 'float32')
 
     somno_spectrums = somno_spectrums[:,(freqs_somno >=.75) & (freqs_somno <= 47.5)]
     freqs_somno = freqs_somno[(freqs_somno >=.75) & (freqs_somno <= 47.5)]
-    print(somno_spectrums.shape)
+    #
 
+    print('compute own spectrum mouse : ',mouse )
+    ds = xr.open_dataset(precompute_dir + '/raw/raw_{}.nc'.format(mouse))
+    raw = ds['signal'].values.astype('float32')
+    sr = ds['sampling_rate'].values
+    #
+    # times = ds.coords['times_second'].values
+    times = np.arange(raw.size)/(sr*3600)
+
+    t_start = times[0]
+    n_epochs = int(raw.size//(windows*sr))
+
+    point_per_epochs = int(4*sr)#800    ##### 4 sec at about 200 HZ   199,6
+    ###### highpass filter 0.5 Hz
+    N =3
+    f_cut = .5
+    nyq = sr/2
+    W = f_cut/nyq
+    b, a = scipy.signal.butter(N, W, btype = 'highpass', output = 'ba')
+    raw = scipy.signal.filtfilt(b,a, raw)
+    #
+    bandwidth = 1.01/windows
+    epochs = np.arange(n_epochs)
+    sample_per_epoch = int(windows*sr)
+    mylist = []
+    index = []
+    for i in range(n_epochs):
+        mylist.append(4*i*sr)
+    real_sample_by_epoch= np.diff(np.array(mylist, dtype='int'))
+    ind = 0
+    for fr in real_sample_by_epoch:
+        fr = int(fr)
+        ind += fr
+        if fr == 799:
+            index.append(ind)
+    index = np.array(index, dtype ='int')+1
+    ref = 69120000
+    if raw.size + index.size != ref:
+        index = index[:-(raw.size + index.size-ref)]
+    raw = np.insert(raw, index, raw[index])
+    point_per_epochs = 800
+    stacked_sigs = raw.reshape((-1, point_per_epochs)).astype('float32')
+
+    print(stacked_sigs.dtype)
+    #
+    freqs_welch, welch = scipy.signal.welch(stacked_sigs, fs = sr, nperseg = int(3.99*sr) )
+    welch = welch[:,(freqs_welch>=.75) & (freqs_welch<=47.5)]
+    freqs_welch = freqs_welch[(freqs_welch>.75) & (freqs_welch<=47.5)]
+
+    # fft = scipy.fft.fft(stacked_sigs)
+    # Fourier = np.fft.fft(stacked_sigs)
+    # Fourier = np.fft.fft(np.random.rand(welch.shape))
+    # Fourier = np.fft.fft(np.random.rand(10,10))
+    # Fourier = F(stacked_sigs)
+    # print(Fourier.shape)
+    # Fourier = np.abs(Fourier)**2
+    # # Fourier =  np.abs(np.fft.fft(stacked_sigs))**2
+    # freqs_Fourier = np.fft.fftfreq(point_per_epochs, 1/sr)
+    # idx = np.argsort(freqs_Fourier)
+    # freqs_Fourier = freqs_Fourier[idx]
+    # Fourier = Fourier[:,idx]
+    # Fourier = Fourier[:,(freqs_Fourier>=.75)&(freqs_Fourier<=47.5)]
+    # freqs_Fourier = freqs_Fourier[(freqs_Fourier>=.75)&(freqs_Fourier<=47.5)]
+
+    multitaper, freqs_multitaper = mne.time_frequency.psd_array_multitaper(stacked_sigs, sfreq = sr, fmax = 47.5, bandwidth = 4*bandwidth, n_jobs = 2)
+    multitaper = multitaper[:,freqs_multitaper>=.75]
+    freqs_multitaper = freqs_multitaper[freqs_multitaper>=.75]
+
+    freqs_welch  = freqs_welch.astype('float32')
+    # freqs_Fourier  = freqs_Fourier.astype('float32')
+    freqs_multitaper  = freqs_multitaper.astype('float32')
+    epochs = epochs.astype('int32')
+    welch = welch.astype('float32')
+    # Fourier = Fourier.astype('float32')
+    multitaper = multitaper.astype('float32')
 
 
     ######      Caution ! Do not remove 1, 2, 3. It correspond to invalid EEG
     # for f, n in zip(['1', '2', '3'], ['w', 'n', 'r']) :
     #     score = np.where(score == f, n, score)
 
-    #######         Extract spectrums from txt        #######
-    ds_spectrum = xr.open_dataset(precompute_dir + '/spectrums/spectrums_{}.nc'.format(mouse))
-    print(ds_spectrum)
-    welch_spectrums = ds_spectrum['welch_spectrum']
-    freqs_welch = ds_spectrum.coords['freqs_welch'].values
 
-    fft_spectrums = ds_spectrum['fft_spectrum']
-    freqs_fft = ds_spectrum.coords['freqs_fft'].values
+    coords = {  'freqs_welch': freqs_welch,
+                # 'freqs_fft': freqs_fft,
+                'freqs_multitaper': freqs_multitaper,
+                'epochs' : epochs,
+                'times_somno' : times_somno,
+                'real_times_somno' : real_times_somno,
+                'freqs_somno' : freqs_somno
+                }
 
-    multitaper_spectrums = ds_spectrum['multitaper_spectrum']
-    freqs_multitaper = ds_spectrum.coords['freqs_multitaper'].values
-
-    welch_mask = (freqs_welch>1.) & (freqs_welch<=4)
-    welch_delta_power = welch_spectrums[:,welch_mask]
-    welch_delta_power = welch_delta_power.sum(axis =1)
-
-    fft_mask = (freqs_fft>1.) & (freqs_fft<=4)
-    fft_delta_power = fft_spectrums[:,fft_mask]
-    fft_delta_power = fft_delta_power.sum(axis =1)
-
-    multitaper_mask = (freqs_multitaper>1.) & (freqs_multitaper<=4)
-    multitaper_delta_power = multitaper_spectrums[:,multitaper_mask]
-    multitaper_delta_power = multitaper_delta_power.sum(axis =1)
-
-    #######         Storing          #######
-    # times = np.arange(len(real_times))*int(4)
-
-    # coords = {'real_times' : real_times, 'times' : times, 'freqs' : freqs}
-    coords = ds_spectrum.coords
-    coords['real_times_somno'] = real_times_somno
-    coords['freqs_somno'] = freqs_somno
-    coords['times_somno'] = times_somno
-
-
-    ds = xr.Dataset(coords = ds_spectrum.coords)
-    # ds = xr.Dataset(coords = coords)
+    ds = xr.Dataset(coords = coords)
     ds['somno_spectrum'] = xr.DataArray(somno_spectrums, dims = ['epochs', 'freqs_somno'])
-    ds['somno_delta_power'] = xr.DataArray(np.array(delta_power_somno), dims = 'epochs')
-
-    ds['welch_spectrum'] = welch_spectrums
-    ds['welch_delta_power'] = welch_delta_power
-
-    ds['fft_spectrum'] = fft_spectrums
-    ds['fft_delta_power'] = fft_delta_power
-
-    ds['multitaper_spectrum'] = multitaper_spectrums
-    ds['multitaper_delta_power'] = multitaper_delta_power
+    ds['welch_spectrum'] = xr.DataArray(welch, dims = ['epochs', 'freqs_welch'])
+    # ds['fft_spectrum'] = xr.DataArray(fft, dims = ['epochs', 'freqs_fft'])
+    ds['multitaper_spectrum'] = xr.DataArray(multitaper, dims = ['epochs', 'freqs_multitaper'])
+    ds['sampling_rate'] = sr
 
     ds['score'] = xr.DataArray(all_score, dims = 'epochs')
 
@@ -273,14 +263,85 @@ def store_scoring_and_spectrums_one_mouse_one_session(group, mouse):
     print(dirname)
     ds.to_netcdf(dirname + 'spectrum_scoring_{}.nc'.format(mouse))
 
+# def F(x):
+#     fft = np.fft.fft(x)
+#     return fft
+def store_all_score_and_spectrum():
+    dcr_mice = get_mice(group = 'DCR-HCRT')
+    control_mice = get_mice(group = 'Control')
+    mice = dcr_mice+control_mice
+    results = Parallel(n_jobs=2)(delayed(store_scoring_and_spectrums_one_mouse_one_session)(mouse) for mouse in mice)
+
+def theta_dominated_wake_encoding_one_mouse(mouse, spectrum_method = 'welch'):
+    dirname = precompute_dir + '/spectrums/'
+    ds = xr.open_dataset(dirname + 'spectrum_scoring_{}.nc'.format(mouse))
+    freqs = ds['freqs_{}'.format(spectrum_method)].values
+    epoch_spectrums = ds['{}_spectrum'.format(spectrum_method)].values
+    wake = ds['score'].values == 'w'
+    wake_spectrums = epoch_spectrums[wake,:]
+    matrix_freqs = np.tile(freqs[:,np.newaxis], wake_spectrums.shape[0]).T
+    matrix_indice = np.tile(np.arange(freqs.size)[:,np.newaxis], wake_spectrums.shape[0]).T
+    peak = np.max(wake_spectrums[:,(freqs>3.5) & (freqs<15)], axis = 1)
+    peak_freq = matrix_freqs[:,(freqs>3.5) & (freqs<15)][wake_spectrums[:,(freqs>3.5) & (freqs<15)] == peak[:,np.newaxis]]
+    peak_freq = peak_freq[:, np.newaxis]
+    peak_in_theta = (peak_freq>6.5) & (peak_freq<12)
+    peak_freq_index = np.where(matrix_freqs == peak_freq)[1][:,np.newaxis]
+    mask_theta_band = (matrix_indice>=peak_freq_index-4) & (matrix_indice<=peak_freq_index+4)
+    theta_power = np.sum(wake_spectrums[mask_theta_band].reshape(-1,9), axis = 1)[:,np.newaxis]
+    fullband_no_delta = np.sum(wake_spectrums[:,(freqs>3.5)&(freqs<45)], axis = 1)[:,np.newaxis]
+    theta_majo = theta_power/fullband_no_delta > .228
+    tdw_amongst_wake = (theta_majo & peak_in_theta).reshape(wake_spectrums.shape[0])
+
+    #####DO the exact same thing but in loop, slower if long loop, but here it isn't that slow
+    # a = np.zeros(wake_spectrums.shape[0])
+    # for w in np.arange(wake_spectrums.shape[0]):
+    #     mask = (freqs>3.5) & (freqs<15)
+    #     f = freqs[mask][wake_spectrums[w][mask]== max(wake_spectrums[w][mask])][0]
+    #     if f>6.5 and f<12 :
+    #         f_ind = np.where(freqs==f)[0][0]
+    #         theta_power = np.sum(wake_spectrums[w][f_ind -4:f_ind+4+1])
+    #         fullband_no_delta = np.sum(wake_spectrums[w][(freqs>3.5)&(freqs<45)])
+    #         majo = theta_power/fullband_no_delta
+    #         majo = majo > .228 ####22,8%
+    #         if majo:
+    #             a[w]=1
+    # tdw_amongst_wake = a.astype('bool')
+
+    wake_epochs = np.where(wake)[0]
+    tdw_epochs = wake_epochs[tdw_amongst_wake]
+    new_score = ds['score'].values.copy()
+    new_score[tdw_epochs] = 't'
+    coords = {'epochs' : np.arange(new_score.size)}
+    ds_tdw = xr.Dataset(coords = coords)
+    ds_tdw['new_score'] = xr.DataArray(new_score, dims = 'epochs')
+    dirname = precompute_dir + '/tdw_score/'
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    ds_tdw.to_netcdf(dirname + 'tdw_score_{}.nc'.format(mouse))
+
+def theta_dominated_wake_encoding_all_mouse():
+    dcr_mice = get_mice(group = 'DCR-HCRT')
+    control_mice = get_mice(group = 'Control')
+    mice = dcr_mice+control_mice
+    results = Parallel(n_jobs=2)(delayed(theta_dominated_wake_encoding_one_mouse)(mouse) for mouse in mice)
+    # theta_dominated_wake_encoding_one_mouse(mouse)
+
+
 if __name__ == '__main__':
-    mouse = 'B2533'
+    # mouse = 'B2533'
+    mouse = 'B2534'
+    # mouse = 'B2767'
+    # mouse = 'B4112'
     # mouse = 'B4907'
     # mouse  ='B2763'
+    # compute_own_spectrum(mouse)
+    # store_scoring_and_spectrums_one_mouse_one_session(mouse)
+    # dirname = precompute_dir + '/tdw_score/'
+    # ds = xr.open_dataset(dirname + 'tdw_score_{}.nc'.format(mouse))
+    # print(ds)
+    # print(ds['new_score'])
 
+    # theta_dominated_wake_encoding_one_mouse(mouse)
+    # theta_dominated_wake_encoding_all_mouse()
 
-    # hack_dask()
-    # vectorial_power_spectrum(mouse)
-    # read_one_mouse_spectrums(mouse)
-    # compute_all_spectrums_data()
-    store_all_score_and_spectrum()
+    # store_all_score_and_spectrum()
