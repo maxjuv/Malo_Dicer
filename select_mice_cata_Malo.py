@@ -32,9 +32,14 @@ def get_mice(group):
 
     return files
 
+def get_mouse_info(mouse):
+    df_excel = pd.read_excel(work_dir + 'datetime_reference_DICER.xls', index_col = 0)
+    group = df_excel.at['MTA-'+mouse,'group']
+    return group
 
 
 if __name__ == '__main__':
     print(get_mice('Control'))
+
     # print(get_mice_for_spectrum('Control'))
     # print(get_mice_for_spectrum('DCR-HCRT'))

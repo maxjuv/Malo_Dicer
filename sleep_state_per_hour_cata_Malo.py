@@ -14,11 +14,13 @@ from select_mice_cata_Malo import get_mice
 def compute_all():
     groups = ['Control', 'DCR-HCRT']
     print(groups)
+    plot_cata_number_accross_time()
     for group in groups :
         print(group)
         precompute_sleep_state_by_epoch(group)
         sleep_state_statistics(group)
         sleep_bouts(group)
+        inter_REM_interval(group)
 
 def precompute_sleep_state_by_epoch(group):
 
@@ -183,13 +185,19 @@ def plot_sleep_state_accross_time(group):
 
     plt.show()
 
-def plot_cata_number_accross_time():
-    # data_dir = 'C:/Users/maxime.juventin/Desktop/scripts_ML/data/'
+def wake_time_before_cata():
     path = precompute_dir + '/DCR-HCRT/sleep_by_epoch.nc'
     ds = xr.open_dataset(path)
 
+    # Get cata event, keep 1st position
+    # Verify always wake before
+    # count backward wake size
+    # give halday and by hour
+
+
     # print(ds)
     number_of_epochs = ds['wake_all_mice'].shape[0]
+    wake = ds['wake_all_mice'].to_pandas()
     epoch_duration = 4
     duration_in_hours = int(number_of_epochs*epoch_duration/3600)
     # print(ds['cata_all_mice'].to_pandas())
@@ -198,40 +206,91 @@ def plot_cata_number_accross_time():
     window = int(time * 3600 / epoch_duration)
     cata_by_time = np.zeros(int(duration_in_hours/time))
     cata_count_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    cata_duration_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
     mice = cata.columns.to_list()
     for mouse in mice :
         # print(mouse)
-        for h, i in enumerate(np.arange(0, number_of_epochs, window)):
+        for h, hour in enumerate(np.arange(0, number_of_epochs, window)):
             # print('hour = ',h)
-            subs = cata[mouse][i : i+window]
+            subs = cata[mouse][hour : hour+window].values
+            sub_wake = wake[mouse][hour : hour+window].values
+
             if subs.sum() == 0 :
                 # print( 'yep   ', h)
                 cata_count_by_hour.at[h, mouse]=0
             else :
                 counter = 0
+                cata_duration = []
                 cata_number = []
-                for i in subs:
-                    if i ==0:
+                positions =[]
+                wake_pre_cata_duration = []
+                for pos,i in enumerate(subs):
+                    if i ==0 and counter !=0:
                         cata_number.append(counter)
+                        if len(positions)>1:
+                            ini = min(positions)
+                            end =  max(positions)
+                        elif len(positions)==1 :
+                            ini = positions[0]
+                            end =  ini +1
+                        cata_duration.append([ini,end])
+
+                        if sub_wake[ini-1]!= 1 and subs[ini-1]!= 1:
+                            print('##### ENCODING ERROR ##### cataplexy during sleep')
+                        else :
+                            inverted_wake_for_counting = sub_wake[:ini]
+                            inverted_wake_for_counting = inverted_wake_for_counting[::-1]
+                            wake_count = 0
+                            for w in inverted_wake_for_counting:
+                                if w == 0:
+                                    break
+                                else :
+                                    wake_count +=1
+                        # fig, ax = plt.subplots()
+                        # ax.plot(subs)
+                        # ax.plot(sub_wake)
+                        # # print(positions)
+                        # print(wake_count)
+                        # print(end-ini)
+                        cata_duration.append(ini-end)
+                        wake_pre_cata_duration.append(wake_count)
+                        # plt.show()
+                        positions = []
                         counter = 0
                     if i ==1:
                         counter +=1
+                        positions.append(pos)
+                # exit()
+
                 # cata_number.append(counter) #### !!!! Add last overlapping event would count twice the same event : end of hour h and begin of hour h+1
                 cata_number=np.array(cata_number)
                 mask = cata_number!=0
                 cata_number = cata_number[mask]
+                cata_duration = np.mean(cata_number*4/60)
                 cata_count_by_hour.at[h, mouse]= cata_number.size
-
-    dirname = excel_dir + '/DCR-HCRT/cataplexy_count/'
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-    filename =dirname+'by_hour_cataplexy_count.xlsx'
-    cata_count_by_hour.to_excel(filename)
+                cata_duration_by_hour.at[h, mouse]= cata_duration
+        exit()
+    # dirname = excel_dir + '/DCR-HCRT/cataplexy_count/'
+    # if not os.path.exists(dirname):
+    #     os.makedirs(dirname)
+    # filename =dirname+'by_hour_cataplexy_count.xlsx'
+    # cata_count_by_hour.to_excel(filename)
+    #
+    # dirname = excel_dir + '/DCR-HCRT/cataplexy_duration/'
+    # if not os.path.exists(dirname):
+    #     os.makedirs(dirname)
+    # filename =dirname+'by_hour_cataplexy_duration.xlsx'
+    # cata_duration_by_hour.to_excel(filename)
 
     time = int(12) # window to look at in HOUR. CAUTION must be a multiple of 100
     window = int(time * 3600 / epoch_duration)
     cata_by_time = np.zeros(int(duration_in_hours/time))
+    # halfday_dict = {0:'bl1_light',1:'bl1_dark',
+    #                 2:'bl2_light',3:'bl2_dark'
+    #                 4:'sd_light',5:'sd_dark'
+    #                 6:'r1_light',7:'r1_dark'}
     cata_count_by_halfday = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    cata_duration_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
     for mouse in mice :
         # print(mouse)
         for h, i in enumerate(np.arange(0, number_of_epochs, window)):
@@ -253,10 +312,371 @@ def plot_cata_number_accross_time():
                 cata_number=np.array(cata_number)
                 mask = cata_number!=0
                 cata_number = cata_number[mask]
+                cata_duration = np.mean(cata_number*4/60)
+                cata_duration_by_hour.at[h, mouse]= cata_duration
                 cata_count_by_halfday.at[h, mouse]= cata_number.size
+    # dirname = excel_dir + '/DCR-HCRT/cataplexy_count/'
+    # filename =dirname+'by_halfday_cataplexy_count.xlsx'
+    # cata_count_by_halfday.to_excel(filename)
+    #
+    # dirname = excel_dir + '/DCR-HCRT/cataplexy_duration/'
+    # filename =dirname+'by_halfday_cataplexy_duration.xlsx'
+    # cata_duration_by_hour.to_excel(filename)
 
+def plot_cata_number_accross_time():
+    # data_dir = 'C:/Users/maxime.juventin/Desktop/scripts_ML/data/'
+    path = precompute_dir + '/DCR-HCRT/sleep_by_epoch.nc'
+    ds = xr.open_dataset(path)
+
+    # print(ds)
+    number_of_epochs = ds['wake_all_mice'].shape[0]
+    wake = ds['wake_all_mice'].to_pandas()
+    rem = ds['rem_all_mice'].to_pandas()
+    nrem = ds['nrem_all_mice'].to_pandas()
+    epoch_duration = 4
+    duration_in_hours = int(number_of_epochs*epoch_duration/3600)
+    # print(ds['cata_all_mice'].to_pandas())
+    cata = ds['cata_all_mice'].to_pandas()
+    time = int(1) # window to look at in HOUR. CAUTION must be a multiple of 100
+    window = int(time * 3600 / epoch_duration)
+    cata_by_time = np.zeros(int(duration_in_hours/time))
+
+    # empty_matrix = np.empty((cata_by_time.size,cata.shape[1]))
+    # empty_matrix[:]=np.nan
+    cata_count_by_hour = pd.DataFrame(np.zeros((cata_by_time.size,cata.shape[1])), index = np.arange(cata_by_time.size), columns = cata.columns.to_list())
+    cata_duration_by_hour = pd.DataFrame(np.zeros((cata_by_time.size,cata.shape[1])), index = np.arange(cata_by_time.size), columns = cata.columns.to_list())
+    wake_pre_cata_duration_by_hour = pd.DataFrame(np.zeros((cata_by_time.size,cata.shape[1])), index = np.arange(cata_by_time.size), columns = cata.columns.to_list())
+    mice = cata.columns.to_list()
+
+    for mouse in mice :
+        # print(mouse)
+        for h, hour in enumerate(np.arange(0, number_of_epochs, window)):
+            # print('hour = ',h)
+            subs = cata[mouse][hour : hour+window].values
+            sub_wake = wake[mouse][hour : hour+window].values
+            positions =[]
+            wake_pre_cata_duration = []
+
+            if subs.sum() == 0 :
+                # print( 'yep   ', h)
+
+                cata_count_by_hour.at[h, mouse]=0
+                cata_duration_by_hour.at[h, mouse]=0
+            else :
+                counter = 0
+                cata_event_size = []
+                for pos,i in enumerate(subs):
+                    if i ==0 and counter !=0:
+                        cata_event_size.append(counter)
+                        counter = 0
+                        ini = positions[0]
+                        if ini !=0 :
+                            # print(ini)
+                            if sub_wake[ini-1]!= 1 and subs[ini-1]!= 1:
+                                print('##### ENCODING ERROR ##### cataplexy during sleep')
+                                sub_rem = rem[mouse][hour : hour+window].values
+                                if  sub_rem[ini-1] ==1:
+                                    print('REM')
+                                sub_nrem = nrem[mouse][hour : hour+window].values
+                                if  sub_nrem[ini-1] ==1:
+                                    print('NREM')
+                            else :
+                                inverted_wake_for_counting = sub_wake[:ini]
+                                inverted_wake_for_counting = inverted_wake_for_counting[::-1]
+                                wake_count = 0
+                                for w in inverted_wake_for_counting:
+                                    if w == 0:
+                                        break
+                                    else :
+                                        wake_count +=1
+                                wake_pre_cata_duration.append(wake_count)
+                    if i ==1:
+                        counter +=1
+                        positions.append(pos)
+                # cata_number.append(counter) #### !!!! Add last overlapping event would count twice the same event : end of hour h and begin of hour h+1
+                cata_event_size=np.array(cata_event_size)
+                mask = cata_event_size!=0
+                cata_event_size = cata_event_size[mask]
+                wake_pre_cata_duration = np.mean(wake_pre_cata_duration)*4/60
+                cata_duration = np.mean(cata_event_size*4/60)
+
+                cata_count_by_hour.at[h, mouse]= cata_event_size.size
+                cata_duration_by_hour.at[h, mouse]= cata_duration
+                wake_pre_cata_duration_by_hour.at[h, mouse]= wake_pre_cata_duration
+
+    dirname = excel_dir + '/DCR-HCRT/cataplexy_count/'
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    filename =dirname+'by_hour_cataplexy_count.xlsx'
+    cata_count_by_hour.to_excel(filename)
+
+    dirname = excel_dir + '/DCR-HCRT/cataplexy_duration/'
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    filename =dirname+'by_hour_cataplexy_duration.xlsx'
+    cata_duration_by_hour.to_excel(filename)
+
+    dirname = excel_dir + '/DCR-HCRT/wake_pre_cataplexy_duration/'
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    filename =dirname+'by_hour_cataplexy_duration.xlsx'
+    wake_pre_cata_duration_by_hour.to_excel(filename)
+
+    time = int(12) # window to look at in HOUR. CAUTION must be a multiple of 100
+    window = int(time * 3600 / epoch_duration)
+    cata_by_time = np.zeros(int(duration_in_hours/time))
+    # halfday_dict = {0:'bl1_light',1:'bl1_dark',
+    #                 2:'bl2_light',3:'bl2_dark'
+    #                 4:'sd_light',5:'sd_dark'
+    #                 6:'r1_light',7:'r1_dark'}
+    cata_count_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    cata_duration_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    wake_pre_cata_duration_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    #
+    # for mouse in mice :
+    #     # print(mouse)
+    #     for h, i in enumerate(np.arange(0, number_of_epochs, window)):
+    #         # print('hour = ',h)
+    #         subs = cata[mouse][i : i+window]
+    #         if subs.sum() == 0 :
+    #             # print( 'yep   ', h)
+    #             cata_count_by_halfday.at[h, mouse]=0
+    #         else :
+    #             counter = 0
+    #             cata_number = []
+    #             for i in subs:
+    #                 if i ==0:
+    #                     cata_number.append(counter)
+    #                     counter = 0
+    #                 if i ==1:
+    #                     counter +=1
+    #             # cata_number.append(counter) #### !!!! Add last overlapping event would count twice the same event : end of hour h and begin of hour h+1
+    #             cata_number=np.array(cata_number)
+    #             mask = cata_number!=0
+    #             cata_number = cata_number[mask]
+    #             cata_duration = np.mean(cata_number*4/60)
+    #             cata_duration_by_hour.at[h, mouse]= cata_duration
+    #             cata_count_by_halfday.at[h, mouse]= cata_number.size
+
+    for mouse in mice :
+        # print(mouse)
+        for h, hour in enumerate(np.arange(0, number_of_epochs, window)):
+            # print('hour = ',h)
+            subs = cata[mouse][hour : hour+window].values
+            sub_wake = wake[mouse][hour : hour+window].values
+            positions =[]
+            wake_pre_cata_duration = []
+
+            if subs.sum() == 0 :
+                # print( 'yep   ', h)
+                cata_count_by_hour.at[h, mouse]=0
+                cata_duration_by_hour.at[h, mouse]=0
+            else :
+                counter = 0
+                cata_event_size = []
+                for pos,i in enumerate(subs):
+                    if i ==0 and counter !=0:
+                        cata_event_size.append(counter)
+                        counter = 0
+                        ini = positions[0]
+                        if ini !=0 :
+                            # print(ini)
+                            if sub_wake[ini-1]!= 1 and subs[ini-1]!= 1:
+                                print('##### ENCODING ERROR ##### cataplexy during sleep')
+                                sub_rem = rem[mouse][hour : hour+window].values
+                                if  sub_rem[ini-1] ==1:
+                                    print('REM')
+                                sub_nrem = nrem[mouse][hour : hour+window].values
+                                if  sub_nrem[ini-1] ==1:
+                                    print('NREM')
+                            else :
+                                inverted_wake_for_counting = sub_wake[:ini]
+                                inverted_wake_for_counting = inverted_wake_for_counting[::-1]
+                                wake_count = 0
+                                for w in inverted_wake_for_counting:
+                                    if w == 0:
+                                        break
+                                    else :
+                                        wake_count +=1
+                                wake_pre_cata_duration.append(wake_count)
+                    if i ==1:
+                        counter +=1
+                        positions.append(pos)
+                # cata_number.append(counter) #### !!!! Add last overlapping event would count twice the same event : end of hour h and begin of hour h+1
+                cata_event_size=np.array(cata_event_size)
+                mask = cata_event_size!=0
+                cata_event_size = cata_event_size[mask]
+                wake_pre_cata_duration = np.mean(wake_pre_cata_duration)*4/60
+                cata_duration = np.mean(cata_event_size*4/60)
+
+                cata_count_by_hour.at[h, mouse]= cata_event_size.size
+                cata_duration_by_hour.at[h, mouse]= cata_duration
+                wake_pre_cata_duration_by_hour.at[h, mouse]= wake_pre_cata_duration
+
+
+    dirname = excel_dir + '/DCR-HCRT/cataplexy_count/'
     filename =dirname+'by_halfday_cataplexy_count.xlsx'
-    cata_count_by_halfday.to_excel(filename)
+    cata_count_by_hour.to_excel(filename)
+
+    dirname = excel_dir + '/DCR-HCRT/cataplexy_duration/'
+    filename =dirname+'by_halfday_cataplexy_duration.xlsx'
+    cata_duration_by_hour.to_excel(filename)
+
+    dirname = excel_dir + '/DCR-HCRT/wake_pre_cataplexy_duration/'
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    filename =dirname+'by_halday_cataplexy_duration.xlsx'
+    wake_pre_cata_duration_by_hour.to_excel(filename)
+
+def plot_tdw_before_cata(spectrum_method = 'welch'):
+    # data_dir = 'C:/Users/maxime.juventin/Desktop/scripts_ML/data/'
+    path = precompute_dir + '/DCR-HCRT/sleep_by_epoch.nc'
+    ds = xr.open_dataset(path)
+
+    # print(ds)
+    number_of_epochs = ds['wake_all_mice'].shape[0]
+    wake = ds['wake_all_mice'].to_pandas()
+    rem = ds['rem_all_mice'].to_pandas()
+    tdw = ds['tdw_all_mice'].to_pandas()
+    nrem = ds['nrem_all_mice'].to_pandas()
+    times = ds['epochs'].values*4/3600
+
+    # epoch_duration = 4
+    # duration_in_hours = int(number_of_epochs*epoch_duration/3600)
+    # print(ds['cata_all_mice'].to_pandas())
+    cata = ds['cata_all_mice'].to_pandas()
+    # print(cata.shape)
+
+    score = pd.DataFrame( np.ones(cata.shape), columns = ds['mice'].values,index = ds['epochs'].values)
+    for mouse in ds['mice'].values:
+        # line = score[r]
+        # print(line)
+        # line[wake[r] ==1] = np.array(['w']*np.sum(wake[r] ==1))
+        score[mouse][wake[mouse] ==1] = np.array(['w']*np.sum(wake[mouse] ==1))
+        score[mouse][cata[mouse] ==1] = np.array(['a']*np.sum(cata[mouse] ==1))
+        score[mouse][nrem[mouse] ==1] = np.array(['n']*np.sum(nrem[mouse] ==1))
+        score[mouse][rem[mouse] ==1] = np.array(['r']*np.sum(rem[mouse] ==1))
+        score[mouse][tdw[mouse] ==1] = np.array(['t']*np.sum(tdw[mouse] ==1))
+        # print(score)
+        # exit()
+    # time = int(1) # window to look at in HOUR. CAUTION must be a multiple of 100
+    # window = int(time * 3600 / epoch_duration)
+    # cata_by_time = np.zeros(int(duration_in_hours/time))
+
+    mice = cata.columns.to_list()
+    dark_periods = {'dark1' :(12,24), 'dark2':(36, 48), 'dark3':(50, 72), 'dark4':(84, 96)}
+    # time = int(12) # window to look at in HOUR. CAUTION must be a multiple of 100
+    # window = int(time * 3600 / epoch_duration)
+    # cata_by_time = np.zeros(int(duration_in_hours/time))
+    # # halfday_dict = {0:'bl1_light',1:'bl1_dark',
+    # #                 2:'bl2_light',3:'bl2_dark'
+    # #                 4:'sd_light',5:'sd_dark'
+    # #                 6:'r1_light',7:'r1_dark'}
+    # cata_count_by_halfday = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    # cata_duration_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    # wake_pre_cata_duration_by_hour = pd.DataFrame( np.zeros((1,cata.shape[1])), columns = cata.columns.to_list())
+    #
+    # for mouse in mice :
+    #     # print(mouse)
+    #     for h, i in enumerate(np.arange(0, number_of_epochs, window)):
+    #         # print('hour = ',h)
+    #         subs = cata[mouse][i : i+window]
+    #         if subs.sum() == 0 :
+    #             # print( 'yep   ', h)
+    #             cata_count_by_halfday.at[h, mouse]=0
+    #         else :
+    #             counter = 0
+    #             cata_number = []
+    #             for i in subs:
+    #                 if i ==0:
+    #                     cata_number.append(counter)
+    #                     counter = 0
+    #                 if i ==1:
+    #                     counter +=1
+    #             # cata_number.append(counter) #### !!!! Add last overlapping event would count twice the same event : end of hour h and begin of hour h+1
+    #             cata_number=np.array(cata_number)
+    #             mask = cata_number!=0
+    #             cata_number = cata_number[mask]
+    #             cata_duration = np.mean(cata_number*4/60)
+    #             cata_duration_by_hour.at[h, mouse]= cata_duration
+    #             cata_count_by_halfday.at[h, mouse]= cata_number.size
+    mean_tdw_percent = pd.DataFrame(index = list(dark_periods.keys()), columns = ds['mice'].values)
+    for period in dark_periods:
+        fig, ax = plt.subplots()
+
+        for mouse in mice :
+
+            ds_spec = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
+            # print(ds_spec)
+            spectrum = ds_spec['{}_spectrum'.format(spectrum_method)].values
+            freqs = ds_spec.coords['freqs_{}'.format(spectrum_method)].values
+
+        # print(mouse)
+        # for h, hour in enumerate(np.arange(0, number_of_epochs, window)):
+            # print('hour = ',h)
+            mask = (times>dark_periods[period][0]) &  (times<dark_periods[period][1])
+            subs = cata[mouse][mask].values
+            sub_spec = spectrum[mask]
+            sub_score = score[mouse][mask].values
+            # sub_wake = wake[mouse][mask].values
+            positions =[]
+            wake_pre_cata_duration = 15#### 1min
+
+            if subs.sum() == 0 :
+                # print( 'yep   ', h)
+                # cata_count_by_hour.at[h, mouse]=0
+                # cata_duration_by_hour.at[h, mouse]=0
+                mean_tdw_percent.at[period, mouse]=0
+            else :
+                counter = 0
+                tdw_percent_before = []
+                spectrum_before = []
+                for pos,i in enumerate(subs):
+                    if i ==0 and counter !=0:
+                        counter = 0
+                        ini = positions[0]
+                        if ini !=0 :
+                            before = sub_score[ini-10: ini]
+                            possible_states = np.unique(before)
+                            positions = []
+                            if 'r' in possible_states:
+                                print('##### ENCODING ERROR ##### cataplexy during sleep')
+                                print('REM')
+                            elif 'n' in possible_states:
+                                print('##### ENCODING ERROR ##### cataplexy during sleep')
+                                print('NREM')
+                            else :
+                                spectrum_before.append(sub_spec[ini-10: ini,:])
+                                tdw_percent_before.append(100*np.sum(before=='t')/before.size)
+
+                    if i ==1:
+                        counter +=1
+                        positions.append(pos)
+                mean_tdw_percent.at[period, mouse]=np.mean(tdw_percent_before)
+                if len(spectrum_before) !=0 :
+                    spectrum_before = np.concatenate(spectrum_before)
+                    ax.plot(freqs, np.mean(spectrum_before, axis = 0))
+
+                # # cata_number.append(counter) #### !!!! Add last overlapping event would count twice the same event : end of hour h and begin of hour h+1
+                # cata_event_size=np.array(cata_event_size)
+                # mask = cata_event_size!=0
+                # cata_event_size = cata_event_size[mask]
+                # wake_pre_cata_duration = np.mean(wake_pre_cata_duration)*4/60
+                # cata_duration = np.mean(cata_event_size*4/60)
+                #
+                # cata_count_by_hour.at[h, mouse]= cata_event_size.size
+                # cata_duration_by_hour.at[h, mouse]= cata_duration
+                # wake_pre_cata_duration_by_hour.at[h, mouse]= wake_pre_cata_duration
+
+        plt.show()
+    dirname = excel_dir + '/DCR-HCRT/tdw_before_cata/'
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    filename =dirname+'tdw_percent.xlsx'
+    mean_tdw_percent.to_excel(filename)
+
+
+
 # def plot_compare_sleep_state_accross_time(control ='Control', test ='DCR_HCRT'):
 #     # data_dir = 'C:/Users/maxime.juventin/Desktop/scripts_ML/data/'
 #     path_control = precompute_dir +  '/' +control+'/sleep_by_epoch.nc'
@@ -448,13 +868,17 @@ def sleep_bouts(group):
             selected_data = data[i1: i2]
             # print(diff.where(diff == -1))
             all_mice_count = {}
+            all_mice_percent_frag = {}
             all_mice_mean_bout_duration = {}
+            all_mice_bout_amount = {}
+            all_mice_state_time = {}
             # print('je suis la')
             for mouse in mice :
                 one_and_zeros_one_mouse = selected_data[mouse].values
                 counter = 0
                 bouts = []
-                total_state = np.sum(one_and_zeros_one_mouse)*4
+                state_time = np.sum(one_and_zeros_one_mouse)*4/60  #min
+                all_mice_state_time[mouse] = state_time
 
                 for i in one_and_zeros_one_mouse:
                     if i ==0:
@@ -464,47 +888,331 @@ def sleep_bouts(group):
                         counter +=1
 
                 #### True duration last bout unknown
-                # bouts.append(counter)
+                bouts.append(counter)
                 bouts=np.array(bouts)
                 mask = bouts!=0
                 bouts = bouts[mask]
+                all_mice_bout_amount[mouse] = [len(bouts), len(bouts)/12]
+
                 bouts = bouts*4
-                mean_bouts = np.mean(bouts)
+                mean_bouts = np.mean(bouts)/60 #min
                 all_mice_mean_bout_duration[mouse] = mean_bouts
 
-                bins_sleep = [2**i for i in np.arange(2,12)]
-                #bins_sleep += [max(bouts)]
-                count, bins= np.histogram(bouts, bins = bins_sleep)
-                # all_mice_count[mouse] = 100*(count*bins[:-1])/total_state
-                all_mice_count[mouse] = count
+                if bouts.size >0 :
+                    if np.max(bouts) > 2**12:
+                        bins_sleep = np.append(2**np.arange(2,12), np.max(bouts))
+                    else :
+                        bins_sleep = 2**np.arange(2,13)
+                    bins_sleep= np.append(np.array([0]), bins_sleep)
 
-            df = pd.DataFrame.from_dict(all_mice_count, orient = 'index', columns = bins[:-1] )
+                    #bins_sleep += [max(bouts)]
+                    # count, bins= np.histogram(bouts, bins = bins_sleep)
+                    state_percentage_frag = []
+                    count = []
+                    for b in np.arange(1,bins_sleep.size):
+                        # print(bins_sleep[b])
+                        # print(bins_sleep[b+1])
+                        # print()
+                        mask = (bouts>bins_sleep[b-1]) & (bouts<=bins_sleep[b])
+                        print(np.unique(bouts[mask]))
+                        print(bins_sleep[b])
+                        state_percentage_frag.append(np.sum(bouts[mask])/(60*state_time))
+                        count.append(np.sum(mask))
+
+                    state_percentage_frag = np.array(state_percentage_frag)
+                    count = np.array(count)
+                    # print(count.size)
+                    # print(bins_sleep.size)
+                    # exit()
+                else :
+                    bins_sleep = 2**np.arange(2,13)
+                    bins_sleep= np.append(np.array([0]), bins_sleep)
+                    count = np.zeros(np.arange(1,13).size-1)
+                    state_percentage_frag = np.zeros(np.arange(1,13).size-1)
+
+                all_mice_count[mouse] = count
+                all_mice_percent_frag[mouse] = state_percentage_frag
+                # fig, ax = plt.subplots()
+                # ax.plot(count)
+                # axb=ax.twinx()
+                # axb.plot(state_percentage_frag, color ='k')
+                # plt.show()
+                # exit()
+            bins_sleep = 2**np.arange(2,13)
+            df_percent_frag = pd.DataFrame.from_dict(all_mice_percent_frag, orient = 'index', columns = bins_sleep )
+            output_path = excel_dir + '/'+ group + '/sleep_percent_fragmentation/' + state + '/'
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            df_percent_frag.to_excel(output_path + state + '_' + cycle + '.xlsx')
+
+
+            df = pd.DataFrame.from_dict(all_mice_count, orient = 'index', columns = bins_sleep )
             output_path = excel_dir + '/'+ group + '/sleep_fragmentation/' + state + '/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             df.to_excel(output_path + state + '_' + cycle + '.xlsx')
 
-            df_mean_duration = pd.DataFrame.from_dict(all_mice_mean_bout_duration, orient = 'index', columns = ['mean_duration'] )
-            output_path = excel_dir + '/'+ group + '/sleep_fragmentation_mean/' + state + '/'
+            df_duration = pd.DataFrame.from_dict(all_mice_mean_bout_duration, orient = 'index', columns = ['mean_duration'] )
+            output_path = excel_dir + '/'+ group + '/state_duration/' + state + '/'
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
-            df_mean_duration.to_excel(output_path + state + '_' + cycle + '.xlsx')
+            df_duration.to_excel(output_path + state + '_' + cycle + '.xlsx')
 
+            df_time = pd.DataFrame.from_dict(all_mice_state_time, orient = 'index', columns = ['time'] )
+            output_path = excel_dir + '/'+ group + '/state_time/' + state + '/'
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            df_time.to_excel(output_path + state + '_' + cycle + '.xlsx')
+
+            df_period_amount = pd.DataFrame.from_dict(all_mice_bout_amount, orient = 'index', columns = ['period', 'freq'] )
+            output_path = excel_dir + '/'+ group + '/period_amount/' + state + '/'
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            df_period_amount.to_excel(output_path + state + '_' + cycle + '.xlsx')
+
+def fragmentation_shift():
+    epoch_duration = 4
+
+    day_cycles = {
+                 'light1' : [0, 12],
+                 'dark1' : [12, 24],
+                 'light2' : [24, 36],
+                 'dark2' : [36, 48],
+                 'sd' : [48, 54],
+                 'light3' : [54,60],
+                 'dark3':[60, 72],
+                 'light4':[72,84 ],
+                 'dark4':[84, 96]}
+    states = ['wake',
+            'nrem',
+            'tdw' ,
+            'rem',
+            'cata']
+    for s, state in enumerate(states):
+        for c, cycle in enumerate(day_cycles):
+            fig, ax = plt.subplots()
+            fig.suptitle(cycle + '_'+state)
+            df = pd.DataFrame(columns =  ['bouts','group'])
+            all_bouts = []
+            all_group = []
+            for group in ['Control', 'DCR-HCRT']:
+                path = precompute_dir + group + '/sleep_by_epoch.nc'
+                ds = xr.open_dataset(path)
+                all_mice_epoch = ds['{}_all_mice'.format(state)].to_pandas()
+
+                number_of_epochs = all_mice_epoch.shape[0]
+                mice = ds.coords['mice'].values
+                duration_in_hours = int(number_of_epochs*epoch_duration/3600)
+
+                cycle_hours = day_cycles[cycle]
+                # print(cycle_hours)
+                i1, i2 = int(cycle_hours[0]), int(cycle_hours[1])
+                i1 = int(i1 *3600/epoch_duration)
+                i2 = int(i2 *3600/epoch_duration)
+                selected_data = all_mice_epoch[i1: i2]
+                # print(diff.where(diff == -1))
+                all_mice_count = {}
+                all_mice_percent_frag = {}
+                # print('je suis la')
+                for mouse in mice :
+                    one_and_zeros_one_mouse = selected_data[mouse].values
+                    counter = 0
+                    bouts = []
+                    for i in one_and_zeros_one_mouse:
+                        if i ==0:
+                            bouts.append(counter)
+                            counter = 0
+                        if i ==1:
+                            counter +=1
+
+                    #### True duration last bout unknown
+                    bouts.append(counter)
+                    bouts=np.array(bouts)
+                    mask = bouts!=0
+                    bouts = bouts[mask]
+                    bouts = bouts*4
+                    all_group.append([group]*bouts.size)
+                    all_bouts.append(bouts)
+                a = np.concatenate(all_bouts)
+                tot_duration = np.sum(a)
+
+
+                count, bins = np.histogram(a, bins = np.arange(0,2052,4))
+                ax.plot(bins[:-1], count*bins[:-1]/tot_duration)
+            # sns.distplot(df[])
+            plt.show()
 
 ##### TODO refaire a zero avec new indication MALO et maintenant wake = w + t
+# def REM_sleep_latency_one_mouse(mouse):
+#     min_wake_duration = 6
+#     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
+#     times = ds['times_somno'].values/3600
+#     score = ds['score'].values
+#     score_behavior = score.copy()
+#     ctrl = get_mice('Control')
+#     dcr = get_mice('DCR-HCRT')
+#     group_mice = {'Control' : ctrl, 'DCR-HCRT':dcr}
+#     if mouse in group_mice['Control'] :
+#         group = 'Control'
+#     elif mouse in group_mice['DCR-HCRT'] :
+#         group = 'DCR-HCRT'
+#
+#
+#     halfday_times= {
+#                  'light1' : [0, 12],
+#                  'dark1' : [12, 24],
+#                  'light2' : [24, 36],
+#                  'dark2' : [36, 48],
+#                  'sd' : [48, 54],
+#                  'light3' : [54,60],
+#                  'dark3':[60, 72],
+#                  'light4':[72,84 ],
+#                  'dark4':[84, 96]}
+#
+#     for f, n in zip(['1', '2', '3'], ['w', 'n', 'r']) :
+#         score_behavior = np.where(score_behavior == f, n, score_behavior)
+#
+#     for halfday in halfday_times:
+#         dirname = excel_dir + '/{}/REM_latency/'.format(group)
+#         if not os.path.exists(dirname):
+#             os.makedirs(dirname)
+#         filename =dirname+'REM_latency_{}_{}.xlsx'.format(group, halfday)
+#         if not os.path.exists(filename):
+#             df = pd.DataFrame(index = group_mice[group], columns = np.arange(5))
+#         else :
+#             df = pd.read_excel(filename, index_col = 0)
+#
+#
+#         t1 = halfday_times[halfday][0]
+#         t2 = halfday_times[halfday][1]
+#         time_mask = (times>t1) & (times<t2)
+#
+#         masked_score = score_behavior[time_mask]
+#         rem = score_behavior[time_mask] == 'r'
+#         nrem = score_behavior[time_mask] == 'n'
+#         wake = score_behavior[time_mask] == 'w'
+#         cata = score_behavior[time_mask] == 'a'
+#
+#         # fig, ax = plt.subplots()
+#         latencies = []
+#         ini_rem = np.diff(rem*1)
+#         pos_ini_rem = np.where(ini_rem == 1)[0]+1
+#         for pos in pos_ini_rem:
+#             wake_duration = 0
+#             for latency, ind in enumerate(np.arange(pos-1)[::-1]):
+#                 s = masked_score[ind]
+#                 if s == 'w':
+#                     wake_duration += 1
+#                 if s == 'w' and wake_duration >=min_wake_duration:
+#                     if latency == 5:
+#                         pos_ini_rem = pos_ini_rem[pos_ini_rem!=pos]
+#                         break
+#                     else :
+#                         latency -= 5
+#                         latencies.append(latency)
+#                         break
+#                 elif s == 'n' and wake_duration < min_wake_duration:
+#                     wake_duration = 0
+#                 elif s =='r' and wake_duration == latency:
+#                     pos_ini_rem = pos_ini_rem[pos_ini_rem!=pos]
+#                     break
+#                 elif s == 'r' and wake_duration != latency:
+#                     if masked_score[ind+1] == 'w':
+#                         latency -= wake_duration
+#                         latencies.append(latency)
+#                     else :
+#                         latencies.append(latency)
+#                     break
+#                     # break
+#
+#             # ax.plot(np.arange(pos-latency, pos), np.ones(latency), color = 'black')
+#         # print(df.columns.to_list())
+#         # print(len(latencies))
+#         # print(latencies)
+#         if len(df.columns.to_list())<len(latencies):
+#             df = df.reindex(columns = np.arange(len(latencies)))
+#         df.loc[mouse, np.arange(len(latencies))] = np.array(latencies)
+#         df.to_excel(filename)
+
+def inter_REM_interval(group):
+    # B0 begins at 4h, B1 etc begins at 8
+    path = precompute_dir + group + '/sleep_by_epoch.nc'
+    ds = xr.open_dataset(path)
+
+    all_mice_r_epoch = ds['rem_all_mice'].to_pandas()    #.unstack().T*1
+    number_of_epochs = ds['rem_all_mice'].shape[0]
+
+    epoch_duration = 4
+    duration_in_hours = int(number_of_epochs*epoch_duration/3600)
+    day_cycles = {
+                 'light1' : [0, 12],
+                 'dark1' : [12, 24],
+                 'light2' : [24, 36],
+                 'dark2' : [36, 48],
+                 'sd' : [48, 54],
+                 'light3' : [54,60],
+                 'dark3':[60, 72],
+                 'light4':[72,84 ],
+                 'dark4':[84, 96]}
+
+    mice = ds.coords['mice'].values
+
+    data = all_mice_r_epoch
+    for c, cycle in enumerate(day_cycles):
+        cycle_hours = day_cycles[cycle]
+        # print(cycle_hours)
+        i1, i2 = int(cycle_hours[0]), int(cycle_hours[1])
+        i1 = int(i1 *3600/epoch_duration)
+        i2 = int(i2 *3600/epoch_duration)
+        selected_data = data[i1: i2]
+        # print(diff.where(diff == -1))
+        all_mice_IRI = {}
+
+        # print('je suis la')
+        for mouse in mice :
+            one_and_zeros_one_mouse = selected_data[mouse].values
+            # print(np.sum(one_and_zeros_one_mouse))
+            diff = np.diff(one_and_zeros_one_mouse)
+            ini = np.where(diff ==1)[0]+1
+            if one_and_zeros_one_mouse[0]==1:
+                ini = np.append(np.array([0]), ini)
+            end = np.where(diff ==-1)[0]
+            if one_and_zeros_one_mouse[-1]==1:
+                end = np.append(end, np.array([one_and_zeros_one_mouse.size]))
+            IRI = np.mean(ini[1:]-end[:-1])
+            IRI *= (4/60)
+            all_mice_IRI[mouse]=IRI
+            # fig, ax = plt.subplots()
+            # ax.plot(diff)
+            # ax.plot(one_and_zeros_one_mouse)
+            # ax.scatter(ini, np.ones(ini.size), color ='green')
+            # ax.scatter(end, np.ones(end.size), color ='red')
+            # for i,iri in enumerate(IRI):
+            #     ax.plot([end[:-1][i], end[:-1][i]+iri],[1,1])
+            # plt.show()
+            # exit()
+
+        df_IRI = pd.DataFrame.from_dict(all_mice_IRI, orient = 'index', columns = ['IRI'] )
+        output_path = excel_dir + '/'+ group + '/IRI/' + '/'
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        df_IRI.to_excel(output_path  + cycle + '.xlsx')
+#
+# def compute_all_REM_latency():
+#     mice = get_mice('Control') + get_mice('DCR-HCRT')
+#     for mouse in mice :
+#         print(mouse)
+#         REM_sleep_latency_one_mouse(mouse)
+
 def REM_sleep_latency_one_mouse(mouse):
     min_wake_duration = 6
     ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
     times = ds['times_somno'].values/3600
     score = ds['score'].values
     score_behavior = score.copy()
-    ctrl = get_mice('Control')
-    dcr = get_mice('DCR-HCRT')
-    group_mice = {'Control' : ctrl, 'DCR-HCRT':dcr}
-    if mouse in group_mice['Control'] :
-        group = 'Control'
-    elif mouse in group_mice['DCR-HCRT'] :
-        group = 'DCR-HCRT'
+    df_excel = pd.read_excel(work_dir + 'datetime_reference_DICER.xls', index_col = 0)
+    group = df_excel.at['MTA-'+mouse, 'group']
+    mice = get_mice(group)
 
 
     halfday_times= {
@@ -527,7 +1235,7 @@ def REM_sleep_latency_one_mouse(mouse):
             os.makedirs(dirname)
         filename =dirname+'REM_latency_{}_{}.xlsx'.format(group, halfday)
         if not os.path.exists(filename):
-            df = pd.DataFrame(index = group_mice[group], columns = np.arange(5))
+            df = pd.DataFrame(index = mice, columns = np.arange(5))
         else :
             df = pd.read_excel(filename, index_col = 0)
 
@@ -540,7 +1248,6 @@ def REM_sleep_latency_one_mouse(mouse):
         rem = score_behavior[time_mask] == 'r'
         nrem = score_behavior[time_mask] == 'n'
         wake = score_behavior[time_mask] == 'w'
-        cata = score_behavior[time_mask] == 'a'
 
         # fig, ax = plt.subplots()
         latencies = []
@@ -580,15 +1287,102 @@ def REM_sleep_latency_one_mouse(mouse):
         # print(latencies)
         if len(df.columns.to_list())<len(latencies):
             df = df.reindex(columns = np.arange(len(latencies)))
-        df.loc[mouse, np.arange(len(latencies))] = np.array(latencies)
+        df.loc[mouse, np.arange(len(latencies))] = np.array(latencies)*4/60
         df.to_excel(filename)
 
 
-def compute_all_REM_latency():
-    mice = get_mice('Control') + get_mice('DCR-HCRT')
+def REM_sleep_latency_by_hour(group):
+    min_wake_duration = 6
+    epoch_duration = 4
+
+    # df_excel = pd.read_excel(work_dir + 'datetime_reference_DICER.xls', index_col = 0)
+    mice = get_mice(group)
+    df = pd.DataFrame(index = mice, columns = np.arange(96))
     for mouse in mice :
-        print(mouse)
-        REM_sleep_latency_one_mouse(mouse)
+        ds = xr.open_dataset(precompute_dir + '/spectrums/spectrum_scoring_{}.nc'.format(mouse))
+        times = ds['times_somno'].values/3600
+        score = ds['score'].values
+
+        score_behavior = score.copy()
+        # miRNA, genotype = get_mouse_info(mouse)
+
+        for f, n in zip(['1', '2', '3'], ['w', 'n', 'r']) :
+            score_behavior = np.where(score_behavior == f, n, score_behavior)
+        hours = np.arange(0, int(round(times[-1])))
+
+        window = int(3600 / epoch_duration)
+
+        print(hours)
+        # exit()
+        c = 1
+        for hour in hours :
+            i1, i2 = int(hour*window), int((hour+1)*window)
+            print(c)
+            c+=1
+            print(hour, hour+1)
+
+            t1 = hour
+            t2 = hour+1
+            time_mask = (times>t1) & (times<t2)
+            print(np.sum(time_mask))
+            print()
+            print()
+            masked_score = score_behavior[time_mask]
+            rem = score_behavior[time_mask] == 'r'
+            nrem = score_behavior[time_mask] == 'n'
+            wake = score_behavior[time_mask] == 'w'
+
+            # fig, ax = plt.subplots()
+            latencies = []
+            ini_rem = np.diff(rem*1)
+            pos_ini_rem = np.where(ini_rem == 1)[0]+1
+            for pos in pos_ini_rem:
+                wake_duration = 0
+                for latency, ind in enumerate(np.arange(pos-1)[::-1]):
+                    s = masked_score[ind]
+                    if s == 'w':
+                        wake_duration += 1
+                    if s == 'w' and wake_duration >=min_wake_duration:
+                        if latency == 5:
+                            pos_ini_rem = pos_ini_rem[pos_ini_rem!=pos]
+                            break
+                        else :
+                            latency -= 5
+                            latencies.append(latency)
+                            break
+                    elif s == 'n' and wake_duration < min_wake_duration:
+                        wake_duration = 0
+                    elif s =='r' and wake_duration == latency:
+                        pos_ini_rem = pos_ini_rem[pos_ini_rem!=pos]
+                        break
+                    elif s == 'r' and wake_duration != latency:
+                        if masked_score[ind+1] == 'w':
+                            latency -= wake_duration
+                            latencies.append(latency)
+                        else :
+                            latencies.append(latency)
+                        break
+                        # break
+            latencies = 4*np.array(latencies)
+            if len(latencies)>0:
+                latency = np.mean(latencies)*4/60
+            else :
+                latency = np.nan
+            df.loc[mouse, hour] = latency
+
+        # exit()
+    dirname = excel_dir + '/{}/REM_latency_by_hour/'.format(group)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+    df.to_excel(dirname + '/REM_latency_by_hour.xlsx')
+
+
+def compute_all_REM_latency():
+            for group in ['DCR-HCRT', 'Control']:
+                REM_sleep_latency_by_hour(group)
+                for mouse in get_mice(group):
+                    REM_sleep_latency_one_mouse(mouse)
 
 
 if __name__ == '__main__' :
@@ -597,13 +1391,17 @@ if __name__ == '__main__' :
 
     group = "DCR-HCRT"
     #group = "Control"
+    # plot_tdw_before_cata()
     # precompute_sleep_state_by_epoch(group)
     # sleep_state_statistics(group)
     # sleep_bouts(group)
-
-    # plot_cata_number_accross_time()
+    # REM_sleep_latency_by_hour(group)
+    # inter_REM_interval(group)
     # REM_sleep_latency_one_mouse(mouse)
+    # exit()
+    # plot_cata_number_accross_time()
     # compute_all_REM_latency()
-    compute_all()
-    # sleep_bouts_all()
-    # plt.show()
+    # compute_all()
+
+
+    fragmentation_shift()
